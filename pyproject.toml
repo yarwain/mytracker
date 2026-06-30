@@ -18,6 +18,7 @@ dev = [
 
 [project.scripts]
 mytracker = "app.main:main"
+import-apple-health = "importers.apple_health:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -1,9 +1,6 @@
-from pathlib import Path
+from importers.paths import DB_PATH
 
 import streamlit as st
-
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-DB_PATH = DATA_DIR / "health.duckdb"
 
 
 def main() -> None:
