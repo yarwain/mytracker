@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE HealthData [
+  <!-- Health Export Format -->
+]>
+<HealthData locale="en_US">
+  <ExportDate value="2024-06-01 12:00:00 +0000"/>
+  <Record
+    type="HKQuantityTypeIdentifierStepCount"
+    unit="count"
+    value="1234"
+    sourceName="iPhone"
+    sourceVersion="17.0"
+    creationDate="2024-06-01 10:00:00 +0000"
+    startDate="2024-06-01 09:00:00 +0000"
+    endDate="2024-06-01 10:00:00 +0000"
+  />
+  <Record
+    type="HKQuantityTypeIdentifierHeartRate"
+    unit="count/min"
+    value="72"
+    sourceName="Apple Watch"
+    sourceVersion="10.0"
+    creationDate="2024-06-01 10:05:00 +0000"
+    startDate="2024-06-01 10:05:00 +0000"
+    endDate="2024-06-01 10:05:00 +0000"
+  />
+  <Record
+    type="HKCategoryTypeIdentifierSleepAnalysis"
+    value="HKCategoryValueSleepAnalysisInBed"
+    sourceName="Apple Watch"
+    sourceVersion="10.0"
+    creationDate="2024-06-01 22:00:00 +0000"
+    startDate="2024-06-01 22:00:00 +0000"
+    endDate="2024-06-02 06:00:00 +0000"
+  />
+  <Record
+    type="HKQuantityTypeIdentifierDietaryCarbohydrates"
+    unit="g"
+    value="45"
+    sourceName="FatSecret"
+    sourceVersion="1.0"
+    creationDate="2024-06-01 12:00:00 +0000"
+    startDate="2024-06-01 12:00:00 +0000"
+    endDate="2024-06-01 12:30:00 +0000"
+  />
+  <Record
+    type="HKQuantityTypeIdentifierDietaryFiber"
+    unit="g"
+    value="8"
+    sourceName="FatSecret"
+    sourceVersion="1.0"
+    creationDate="2024-06-01 12:00:00 +0000"
+    startDate="2024-06-01 12:00:00 +0000"
+    endDate="2024-06-01 12:30:00 +0000"
+  />
+  <Record
+    type="HKQuantityTypeIdentifierDietaryProtein"
+    unit="g"
+    value="25"
+    sourceName="FatSecret"
+    sourceVersion="1.0"
+    creationDate="2024-06-01 12:00:00 +0000"
+    startDate="2024-06-01 12:00:00 +0000"
+    endDate="2024-06-01 12:30:00 +0000"
+  />
+  <Record
+    type="HKQuantityTypeIdentifierDietarySodium"
+    unit="mg"
+    value="640"
+    sourceName="FatSecret"
+    sourceVersion="1.0"
+    creationDate="2024-06-01 12:00:00 +0000"
+    startDate="2024-06-01 12:00:00 +0000"
+    endDate="2024-06-01 12:30:00 +0000"
+  />
+  <Record
+    type="HKQuantityTypeIdentifierDietaryFatTotal"
+    unit="g"
+    value="12"
+    sourceName="FatSecret"
+    sourceVersion="1.0"
+    creationDate="2024-06-01 12:00:00 +0000"
+    startDate="2024-06-01 12:00:00 +0000"
+    endDate="2024-06-01 12:30:00 +0000"
+  />
+  <Workout
+    workoutActivityType="HKWorkoutActivityTypeRunning"
+    duration="30"
+    durationUnit="min"
+    totalDistance="5.2"
+    totalDistanceUnit="km"
+    totalEnergyBurned="320"
+    totalEnergyBurnedUnit="kcal"
+    sourceName="Apple Watch"
+    sourceVersion="10.0"
+    creationDate="2024-06-01 11:00:00 +0000"
+    startDate="2024-06-01 10:30:00 +0000"
+    endDate="2024-06-01 11:00:00 +0000"
+  />
+  <ActivitySummary
+    dateComponents="2024-06-01"
+    activeEnergyBurned="512"
+    activeEnergyBurnedGoal="600"
+    activeEnergyBurnedUnit="kcal"
+    appleMoveTime="45"
+    appleMoveTimeGoal="30"
+    appleExerciseTime="35"
+    appleExerciseTimeGoal="30"
+    appleStandHours="10"
+    appleStandHoursGoal="12"
+  />
+</HealthData>
