@@ -1,0 +1,71 @@
+"""Application configuration and Apple Health metric identifiers."""
+
+from dataclasses import dataclass
+from typing import Literal
+
+
+@dataclass(frozen=True)
+class MorningWindow:
+    """Local-time hour range used to classify morning measurements."""
+
+    start_hour: int = 5
+    end_hour: int = 11
+
+    def label(self) -> str:
+        """Return a human-readable label for the configured window."""
+        return f"{self.start_hour:02d}:00–{self.end_hour:02d}:59"
+
+
+@dataclass(frozen=True)
+class HealthMetric:
+    """Definition of a health record type and how it should be aggregated."""
+
+    record_type: str
+    label: str
+    aggregation: Literal["avg", "sum"] = "avg"
+    morning_only: bool = False
+
+
+ZEPP_SOURCE = "Zepp Life"
+MORNING_WINDOW = MorningWindow()
+
+ZEPP_METRICS: tuple[HealthMetric, ...] = (
+    HealthMetric("HKQuantityTypeIdentifierBodyMass", "Body mass", morning_only=True),
+    HealthMetric("HKQuantityTypeIdentifierBodyMassIndex", "BMI", morning_only=True),
+    HealthMetric(
+        "HKQuantityTypeIdentifierBodyFatPercentage",
+        "Body fat %",
+        morning_only=True,
+    ),
+    HealthMetric("HKQuantityTypeIdentifierLeanBodyMass", "Lean body mass", morning_only=True),
+)
+
+METRIC_BY_TYPE = {metric.record_type: metric for metric in ZEPP_METRICS}
+
+
+@dataclass(frozen=True)
+class ManualMetric:
+    """Definition of a manually entered body measurement."""
+
+    key: str
+    label: str
+    unit: str = "cm"
+
+
+MANUAL_ENTRY_MEASUREMENTS: tuple[ManualMetric, ...] = (
+    ManualMetric("neck", "Neck size"),
+    ManualMetric("waist", "Waist size"),
+    ManualMetric("hip", "Hip size"),
+)
+
+BODY_FAT_METRIC = ManualMetric("body_fat", "Body fat (US Army)", unit="%")
+
+MANUAL_CHART_METRICS: tuple[ManualMetric, ...] = MANUAL_ENTRY_MEASUREMENTS + (BODY_FAT_METRIC,)
+
+USER_HEIGHT_CM = 160.0
+
+MANUAL_METRIC_BY_KEY = {metric.key: metric for metric in MANUAL_CHART_METRICS}
+ENTERABLE_METRIC_KEYS = frozenset(metric.key for metric in MANUAL_ENTRY_MEASUREMENTS)
+
+# Backward-compatible alias for entry-only lists.
+MANUAL_BODY_MEASUREMENTS = MANUAL_ENTRY_MEASUREMENTS

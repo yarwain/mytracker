@@ -47,6 +47,7 @@ def init_schema(
         "ALTER TABLE apple_health_records ADD COLUMN IF NOT EXISTS value_text VARCHAR"
     )
     conn.execute((models_dir / "apple_nutrition.sql").read_text())
+    conn.execute((models_dir / "manual_metrics.sql").read_text())
     conn.execute("DROP INDEX IF EXISTS uq_apple_health_records")
     conn.execute(
         """

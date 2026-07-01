@@ -1,0 +1,18 @@
+{
+    "workbench.editorAssociations": {
+        "*.parquet": "duckdb.dataFileViewer",
+        "*.csv": "duckdb.dataFileViewer",
+        "*.tsv": "duckdb.dataFileViewer",
+        "*.xlsx": "duckdb.dataFileViewer",
+        "*.duckdb": "duckdb.tableViewer"
+    },
+    "duckdb.databases": [
+        {
+            "alias": "health",
+            "type": "file",
+            "path": "/Users/yarwain/Desktop/Python/mytracker/mytracker/data/health.duckdb",
+            "attached": false
+        }
+    ],
+    "duckdb.defaultDatabase": "health"
+}
