@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS apple_health_records (
     type VARCHAR NOT NULL,
     unit VARCHAR,
     value DOUBLE,
+    value_text VARCHAR,
     source_name VARCHAR,
     source_version VARCHAR,
     device VARCHAR,
@@ -43,9 +44,6 @@ CREATE TABLE IF NOT EXISTS apple_health_activity_summaries (
     apple_stand_hours DOUBLE,
     apple_stand_hours_goal DOUBLE
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS uq_apple_health_records
-    ON apple_health_records (type, start_date, end_date, value, source_name);
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_apple_health_workouts
     ON apple_health_workouts (workout_activity_type, start_date, end_date, source_name);

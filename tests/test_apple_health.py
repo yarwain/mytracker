@@ -11,9 +11,10 @@ def test_import_apple_health_xml(tmp_path: Path) -> None:
 
     stats = import_apple_health(FIXTURE, db_path)
 
-    assert stats.records == 2
+    assert stats.records == 3
     assert stats.workouts == 1
     assert stats.activity_summaries == 1
+    assert stats.nutrition == 1
 
     conn = connect(db_path)
     try:
@@ -23,7 +24,7 @@ def test_import_apple_health_xml(tmp_path: Path) -> None:
             "SELECT COUNT(*) FROM apple_health_activity_summaries"
         ).fetchone()[0]
 
-        assert record_count == 2
+        assert record_count == 3
         assert workout_count == 1
         assert summary_count == 1
 
@@ -35,6 +36,23 @@ def test_import_apple_health_xml(tmp_path: Path) -> None:
             """
         ).fetchone()[0]
         assert steps == 1234
+
+        sleep = conn.execute(
+            """
+            SELECT value_text
+            FROM apple_health_records
+            WHERE type = 'HKCategoryTypeIdentifierSleepAnalysis'
+            """
+        ).fetchone()[0]
+        assert sleep == "HKCategoryValueSleepAnalysisInBed"
+
+        nutrition = conn.execute(
+            """
+            SELECT carbohydrates, fibre, protein, sodium, total_fat
+            FROM apple_nutrition
+            """
+        ).fetchone()
+        assert nutrition == (45.0, 8.0, 25.0, 640.0, 12.0)
     finally:
         conn.close()
 
@@ -48,7 +66,7 @@ def test_import_is_idempotent(tmp_path: Path) -> None:
     conn = connect(db_path)
     try:
         record_count = conn.execute("SELECT COUNT(*) FROM apple_health_records").fetchone()[0]
-        assert record_count == 2
+        assert record_count == 3
     finally:
         conn.close()
 
@@ -67,7 +85,7 @@ def test_replace_clears_existing_rows(tmp_path: Path) -> None:
         record_count = conn.execute("SELECT COUNT(*) FROM apple_health_records").fetchone()[0]
 
         assert import_count == 1
-        assert record_count == 2
+        assert record_count == 3
     finally:
         conn.close()
 
@@ -90,5 +108,6 @@ def test_init_schema_creates_tables(tmp_path: Path) -> None:
         assert "apple_health_records" in tables
         assert "apple_health_workouts" in tables
         assert "apple_health_activity_summaries" in tables
+        assert "apple_nutrition" in tables
     finally:
         conn.close()

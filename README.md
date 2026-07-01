@@ -52,6 +52,7 @@ The importer streams `export.xml` and loads three tables:
 - `apple_health_records` — metrics such as steps, heart rate, sleep
 - `apple_health_workouts` — workouts with duration and distance
 - `apple_health_activity_summaries` — daily Move / Exercise / Stand rings
+- `apple_nutrition` — carbohydrates, fibre, protein, sodium, total fat per meal
 
 Re-imports skip duplicate rows. Use `--replace` to wipe existing Apple Health data first.
 
