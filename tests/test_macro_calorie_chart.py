@@ -5,7 +5,7 @@ import pandas as pd
 from app.charts.macro_calorie_chart import MacroCalorieChart
 
 
-def test_macro_calorie_chart_layers_body_mass_above_calories() -> None:
+def test_macro_calorie_chart_stacks_body_mass_subplot() -> None:
     macro_df = pd.DataFrame(
         {
             "date": [date(2025, 1, 6), date(2025, 1, 13)],
@@ -20,17 +20,20 @@ def test_macro_calorie_chart_layers_body_mass_above_calories() -> None:
     )
     body_mass_df = pd.DataFrame(
         {
-            "date": [date(2025, 1, 6), date(2025, 1, 13)],
-            "value": [62.0, 61.5],
-            "unit": ["kg", "kg"],
-            "label": ["Body mass", "Body mass"],
+            "date": [date(2025, 1, 6), date(2025, 1, 13), date(2025, 1, 20)],
+            "value": [62.0, 61.5, 61.0],
+            "unit": ["kg", "kg", "kg"],
+            "label": ["Body mass", "Body mass", "Body mass"],
         }
     )
 
     chart = MacroCalorieChart().build(macro_df, body_mass_df=body_mass_df)
     spec = chart.to_dict()
 
-    assert spec["layer"][0]["layer"][1]["mark"]["type"] == "line"
-    assert spec["layer"][1]["mark"]["type"] == "line"
-    assert spec["layer"][2]["mark"]["type"] == "line"
-    assert spec["resolve"]["scale"]["y"] == "independent"
+    assert "vconcat" in spec
+    assert len(spec["vconcat"]) == 2
+    assert spec["vconcat"][0]["layer"][1]["mark"]["type"] == "line"
+    assert spec["vconcat"][1]["layer"][1]["mark"]["type"] == "line"
+    assert spec["resolve"]["scale"]["x"] == "shared"
+    assert spec["vconcat"][0]["height"] == 180
+    assert spec["vconcat"][1]["height"] == 100

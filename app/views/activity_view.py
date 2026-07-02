@@ -16,6 +16,7 @@ from app.views.chart_controls import (
     render_year_filter,
     render_year_period_row,
 )
+from app.views.chart_layout import chart_panel, filter_toolbar, render_chart
 
 
 class ActivityView:
@@ -39,19 +40,21 @@ class ActivityView:
         steps_df = self._repository.load_steps()
         workouts_df = self._repository.load_workout_breakdown()
         workout_activities = self._repository.list_workout_activities()
-        selected_activities = self._selected_workout_activities(workout_activities)
-        workout_measure = self._selected_workout_measure()
 
         combined = pd.concat(
             [frame for frame in (steps_df, workouts_df) if not frame.empty],
             ignore_index=True,
         )
         if combined.empty:
-            self._render_filters(workout_activities, year_options=[])
             st.warning("No activity data for the current selection.")
             return
 
         year_options = available_years(combined)
+        filter_toolbar()
+        self._render_filters(workout_activities, year_options=year_options)
+
+        selected_activities = self._selected_workout_activities(workout_activities)
+        workout_measure = self._selected_workout_measure()
         selected_years = self._selected_years(year_options)
         steps_period = self._selected_steps_period()
         workout_period = self._selected_workout_period()
@@ -69,40 +72,53 @@ class ActivityView:
             )
 
         if steps_plot.empty and workouts_plot.empty:
-            self._render_filters(workout_activities, year_options=year_options)
             st.warning("No data for the selected years.")
             return
 
         if not steps_plot.empty:
             steps_source = self._repository.describe_steps_sources(steps_df)
-            steps_period_label = "monthly" if steps_period == "monthly" else "weekly"
-            st.markdown("#### Steps")
-            st.caption(
-                f"{steps_period_label.capitalize()} average of daily step totals from {steps_source}. "
-                "When several sources report steps on the same day, Polar is preferred over "
-                "Garmin, then other Apple Health sources. "
-                f"{len(steps_plot)} points on chart."
-            )
-            period_col, _ = st.columns([1, 3])
-            with period_col:
-                render_period_filter(key="activity_steps_period")
-            self._render_steps_chart(steps_plot, period=steps_period)
+            steps_label = "Monthly" if steps_period == "monthly" else "Weekly"
+            with chart_panel(
+                "Steps",
+                subtitle=(
+                    f"{steps_label} average daily steps from {steps_source}. "
+                    "Same-day conflicts prefer Polar, then Garmin."
+                ),
+            ):
+                render_chart(self._steps_chart.build(steps_plot, period=steps_period))
+                latest = steps_plot.iloc[-1]
+                st.metric("Latest average", f"{latest['value']:,.0f} steps")
 
         if not workouts_plot.empty:
             workout_source = workouts_df.iloc[0]["source_name"]
-            workout_period_label = "monthly" if workout_period == "monthly" else "weekly"
-            measure_label = "workout count" if workout_measure == WORKOUT_MEASURE_COUNT else "duration"
-            st.markdown("#### Workouts")
-            st.caption(
-                f"{workout_period_label.capitalize()} {measure_label} by activity from {workout_source}. "
-                f"{len(selected_activities)} activities selected."
-            )
-            self._render_workout_chart(workouts_plot, period=workout_period, measure=workout_measure)
+            workout_label = "Monthly" if workout_period == "monthly" else "Weekly"
+            measure_label = "count" if workout_measure == WORKOUT_MEASURE_COUNT else "minutes"
+            with chart_panel(
+                "Workouts",
+                subtitle=(
+                    f"{workout_label} workout {measure_label} by activity from {workout_source}."
+                ),
+            ):
+                render_chart(
+                    self._workout_chart.build(
+                        workouts_plot,
+                        period=workout_period,
+                        measure=workout_measure,
+                    )
+                )
 
-        if not steps_plot.empty:
-            self._render_steps_summary(steps_plot)
-        self._render_raw_data(steps_plot, workouts_plot)
-        self._render_filters(workout_activities, year_options=year_options)
+        with st.expander("Table data"):
+            frames: list[pd.DataFrame] = []
+            if not steps_plot.empty:
+                frames.append(steps_plot.assign(series="Steps"))
+            if not workouts_plot.empty:
+                frames.append(workouts_plot.assign(series="Workouts"))
+            if frames:
+                st.dataframe(
+                    pd.concat(frames, ignore_index=True).sort_values(["series", "date"]),
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
     def _selected_workout_activities(self, activities: list[str]) -> list[str]:
         if not activities:
@@ -136,32 +152,34 @@ class ActivityView:
         *,
         year_options: list[int],
     ) -> None:
-        """Render compact activity chart controls below the plots."""
-        st.markdown("##### Chart options")
-
+        """Render compact activity controls above the charts."""
         if workout_activities:
             if year_options:
-                year_col, period_col, measure_col = st.columns([2, 1, 1])
+                year_col, steps_col, workout_col, measure_col = st.columns([2, 1, 1, 1])
                 with year_col:
                     render_year_filter(year_options, key="activity_years")
-                with period_col:
-                    render_period_filter(key="activity_workout_period")
+                with steps_col:
+                    render_period_filter(key="activity_steps_period", label="Steps")
+                with workout_col:
+                    render_period_filter(key="activity_workout_period", label="Workouts")
                 with measure_col:
-                    st.radio(
+                    st.segmented_control(
                         "Show",
                         options=["Count", "Duration"],
-                        horizontal=True,
+                        default=st.session_state.get("activity_workout_measure", "Count"),
                         key="activity_workout_measure",
                     )
             else:
-                period_col, measure_col = st.columns([1, 1])
-                with period_col:
-                    render_period_filter(key="activity_workout_period")
+                steps_col, workout_col, measure_col = st.columns([1, 1, 1])
+                with steps_col:
+                    render_period_filter(key="activity_steps_period", label="Steps")
+                with workout_col:
+                    render_period_filter(key="activity_workout_period", label="Workouts")
                 with measure_col:
-                    st.radio(
+                    st.segmented_control(
                         "Show",
                         options=["Count", "Duration"],
-                        horizontal=True,
+                        default=st.session_state.get("activity_workout_measure", "Count"),
                         key="activity_workout_measure",
                     )
 
@@ -169,54 +187,11 @@ class ActivityView:
                 "Activities",
                 options=workout_activities,
                 default=self._selected_workout_activities(workout_activities),
-                help="Choose which activities appear as grouped columns on the workout chart.",
                 key="activity_workout_activities",
             )
         elif year_options:
-            render_year_period_row(
-                year_options,
-                year_key="activity_years",
-                period_key="activity_workout_period",
-            )
-
-    def _render_steps_summary(self, df: pd.DataFrame) -> None:
-        """Show the latest average step count."""
-        latest = df.iloc[-1]
-        st.metric("Steps", f"{latest['value']:,.0f}")
-
-    def _render_steps_chart(self, df: pd.DataFrame, *, period: Period) -> None:
-        """Plot step totals on a real y-axis."""
-        chart = self._steps_chart.build(df, period=period)
-        st.altair_chart(chart, use_container_width=True)
-
-    def _render_workout_chart(
-        self,
-        df: pd.DataFrame,
-        *,
-        period: Period,
-        measure: str,
-    ) -> None:
-        """Plot grouped workout bars by activity."""
-        chart = self._workout_chart.build(df, period=period, measure=measure)
-        st.altair_chart(chart, use_container_width=True)
-
-    def _render_raw_data(
-        self,
-        steps_df: pd.DataFrame,
-        workouts_df: pd.DataFrame,
-    ) -> None:
-        """Show the underlying chart data."""
-        frames: list[pd.DataFrame] = []
-        if not steps_df.empty:
-            frames.append(steps_df.assign(series="Steps"))
-        if not workouts_df.empty:
-            frames.append(workouts_df.assign(series="Workouts"))
-
-        if not frames:
-            return
-
-        with st.expander("Raw data"):
-            st.dataframe(
-                pd.concat(frames, ignore_index=True).sort_values(["series", "date"]),
-                use_container_width=True,
-            )
+            year_col, steps_col = st.columns([2, 1])
+            with year_col:
+                render_year_filter(year_options, key="activity_years")
+            with steps_col:
+                render_period_filter(key="activity_steps_period", label="Steps")

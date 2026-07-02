@@ -29,9 +29,8 @@ class MyTrackerApp:
 
     def run(self) -> None:
         """Render the dashboard."""
-        st.set_page_config(page_title="MyTracker", layout="wide")
+        st.set_page_config(page_title="MyTracker", layout="wide", initial_sidebar_state="collapsed")
         st.title("MyTracker")
-        st.caption("Health statistics from Apple Health, Garmin, and FatSecret")
 
         if not self._database.exists:
             st.info(f"No database yet. Import data to create `{self._database.db_path}`.")

@@ -4,33 +4,35 @@ import altair as alt
 import pandas as pd
 
 from app.charts.aggregation import Period
+from app.charts.theme import STEPS_COLOR, date_encoding, date_tooltip_title, finalize, numeric_axis
 
 
 class StepsChart:
-    """Build a line chart of step counts."""
-
-    def __init__(self, *, height: int = 420) -> None:
-        self._height = height
+    """Build a compact line chart of step counts."""
 
     def build(self, df: pd.DataFrame, *, period: Period = "weekly") -> alt.Chart:
-        """Plot step totals without normalizing the y-axis."""
+        """Plot step totals with a clear date axis and readable values."""
         if df.empty:
-            return alt.Chart(pd.DataFrame({"date": [], "value": []})).mark_point()
+            return finalize(alt.Chart(pd.DataFrame({"date": [], "value": []})).mark_point())
 
         plot_df = df.copy()
         plot_df["date"] = pd.to_datetime(plot_df["date"])
-        date_title = "Month" if period == "monthly" else "Date"
+        date_title = date_tooltip_title(period)
+        x_enc = date_encoding(period)
+        y_enc = numeric_axis("Steps", value_format=",.0f")
+        tooltip = [
+            alt.Tooltip("date:T", title=date_title, format="%d %b %Y"),
+            alt.Tooltip("value:Q", title="Steps", format=",.0f"),
+        ]
 
-        return (
+        area = (
             alt.Chart(plot_df)
-            .mark_line(point=True, strokeWidth=2)
-            .encode(
-                x=alt.X("date:T", title=date_title),
-                y=alt.Y("value:Q", title="Steps", scale=alt.Scale(zero=False)),
-                tooltip=[
-                    alt.Tooltip("date:T", title=date_title),
-                    alt.Tooltip("value:Q", title="Steps", format=",.0f"),
-                ],
-            )
-            .properties(height=self._height)
+            .mark_area(opacity=0.12, color=STEPS_COLOR)
+            .encode(x=x_enc, y=y_enc)
         )
+        line = (
+            alt.Chart(plot_df)
+            .mark_line(point=True, strokeWidth=2.2, color=STEPS_COLOR)
+            .encode(x=x_enc, y=y_enc, tooltip=tooltip)
+        )
+        return finalize(alt.layer(area, line))

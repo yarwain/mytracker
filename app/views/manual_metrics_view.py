@@ -17,6 +17,7 @@ from app.views.chart_controls import (
     render_period_filter,
     render_year_filter,
 )
+from app.views.chart_layout import chart_panel, filter_toolbar, render_chart
 
 
 class ManualMetricsView:
@@ -41,11 +42,6 @@ class ManualMetricsView:
     def render(self) -> None:
         """Draw the combined body measurements section."""
         st.subheader("Body measurements")
-        st.caption(
-            "Manual neck, waist, and hip tracking in centimetres with US Army body fat "
-            f"(height fixed at {USER_HEIGHT_CM:.0f} cm), combined with Zepp Life morning "
-            f"readings ({MORNING_WINDOW.label()})."
-        )
 
         self._render_entry_form()
 
@@ -72,6 +68,7 @@ class ManualMetricsView:
             return
 
         df_all = pd.concat(preload_frames, ignore_index=True)
+        filter_toolbar()
         filter_col, year_col, period_col = st.columns([3, 2, 1])
         with filter_col:
             selected_labels = self._render_metric_filter(all_labels)
@@ -91,22 +88,20 @@ class ManualMetricsView:
             st.warning("No data for the selected years.")
             return
 
-        period_label = "monthly" if period == "monthly" else "weekly"
-        point_counts = plot_df.groupby("label", sort=False).size()
-        st.caption(
-            f"{period_label.capitalize()} averages on one combined chart. "
-            "Each metric uses its own real y-axis scale. "
-            + ", ".join(f"{label}: {count} points" for label, count in point_counts.items())
-        )
-
         chart_metrics = [
             metric
             for metric in manual_metrics + zepp_metrics
             if metric.label in selected_labels
         ]
-        self._render_summary(plot_df, chart_metrics)
-        self._render_chart(plot_df, chart_metrics, period=period)
-        self._render_raw_data(plot_df)
+        period_label = "Monthly" if period == "monthly" else "Weekly"
+        subtitle = (
+            f"{period_label} averages. Manual cm entries and Zepp morning readings "
+            f"({MORNING_WINDOW.label()}). US Army body fat uses {USER_HEIGHT_CM:.0f} cm height."
+        )
+
+        with chart_panel("Body measurement trends", subtitle=subtitle):
+            self._render_summary(plot_df, chart_metrics)
+            self._render_chart(plot_df, chart_metrics, period=period)
 
     def _render_entry_form(self) -> None:
         """Render a compact single-row form for entering manual measurements."""
@@ -176,14 +171,12 @@ class ManualMetricsView:
         if not default:
             default = [label for label in labels if label != "Neck size"] or labels[:1]
 
-        selected_labels = st.multiselect(
+        return st.multiselect(
             "Measurements",
             options=labels,
             default=default,
-            help="Choose manual and Zepp Life measurements to show on the chart.",
             key="body_metric_filter",
         )
-        return selected_labels
 
     def _render_summary(
         self,
@@ -203,7 +196,7 @@ class ManualMetricsView:
                 if unit != "mg"
                 else f"{latest['value']:.0f} {unit}"
             )
-            columns[index % len(columns)].metric(metric.label, value_text)
+            columns[index % len(columns)].metric(metric.label, value_text, label_visibility="visible")
 
     def _render_chart(
         self,
@@ -213,13 +206,4 @@ class ManualMetricsView:
         period: Period,
     ) -> None:
         """Plot selected measurements on one combined chart."""
-        chart = self._chart_builder.build(df, metrics, period=period)
-        st.altair_chart(chart, use_container_width=True)
-
-    def _render_raw_data(self, df: pd.DataFrame) -> None:
-        """Show saved measurements."""
-        with st.expander("Raw data"):
-            st.dataframe(
-                df.sort_values(["label", "date"]),
-                use_container_width=True,
-            )
+        render_chart(self._chart_builder.build(df, metrics, period=period))

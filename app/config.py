@@ -42,6 +42,7 @@ ZEPP_METRICS: tuple[HealthMetric, ...] = (
 
 METRIC_BY_TYPE = {metric.record_type: metric for metric in ZEPP_METRICS}
 BODY_MASS_METRIC = ZEPP_METRICS[0]
+BODY_MASS_AXIS_FLOOR_KG = 53.0
 
 
 @dataclass(frozen=True)

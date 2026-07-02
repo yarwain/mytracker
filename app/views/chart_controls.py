@@ -8,10 +8,10 @@ from app.charts.aggregation import Period, resample_period, resample_period_sum
 
 def render_period_filter(*, key: str, label: str = "Period") -> Period:
     """Render a compact weekly vs monthly selector."""
-    selected = st.radio(
+    selected = st.segmented_control(
         label,
         options=["Weekly", "Monthly"],
-        horizontal=True,
+        default=st.session_state.get(key, "Weekly"),
         key=key,
     )
     return "weekly" if selected == "Weekly" else "monthly"
@@ -29,7 +29,7 @@ def render_year_filter(available: list[int], *, key: str, label: str = "Years") 
         label,
         options=available,
         default=available,
-        help="Show data for the selected years only.",
+        placeholder="Choose years",
         key=key,
     )
     return selected or available

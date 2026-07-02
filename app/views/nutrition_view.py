@@ -17,6 +17,7 @@ from app.views.chart_controls import (
     render_year_filter,
     render_year_period_row,
 )
+from app.views.chart_layout import chart_panel, filter_toolbar, render_chart
 
 
 class NutritionView:
@@ -44,10 +45,18 @@ class NutritionView:
             return
 
         st.subheader("Nutrition")
-
         sources = self._repository.list_sources()
+        breakdown_df = self._repository.load_macro_calorie_breakdown()
+        probe_df = breakdown_df if not breakdown_df.empty else pd.DataFrame({"date": []})
+        year_options = available_years(probe_df) if not probe_df.empty else []
+
+        filter_toolbar()
+        self._render_filters(sources, available_metrics, year_options=year_options)
+
         selected_sources = self._selected_sources(sources)
         selected_metrics = self._selected_metrics(available_metrics)
+        selected_years = self._selected_years(year_options)
+        period = self._selected_period()
 
         df = pd.DataFrame()
         if selected_metrics:
@@ -61,13 +70,12 @@ class NutritionView:
         )
 
         if df.empty and breakdown_df.empty:
-            self._render_filters(sources, available_metrics, year_options=[])
             st.warning("No data for the selected metrics and sources.")
             return
 
-        year_options = available_years(df if not df.empty else breakdown_df)
-        selected_years = self._selected_years(year_options)
-        period = self._selected_period()
+        if not year_options:
+            year_options = available_years(df if not df.empty else breakdown_df)
+            selected_years = self._selected_years(year_options)
 
         plot_df = pd.DataFrame()
         if not df.empty:
@@ -80,44 +88,35 @@ class NutritionView:
         body_mass_plot_df = self._load_body_mass_plot(selected_years, period)
 
         if plot_df.empty and macro_plot_df.empty:
-            self._render_filters(sources, available_metrics, year_options=year_options)
             st.warning("No data for the selected years.")
             return
 
+        period_label = "Monthly" if period == "monthly" else "Weekly"
+
         if not macro_plot_df.empty:
-            st.markdown("#### Macro calories vs logged calories")
-            caption = (
-                "Stacked bars show carbs×4, protein×4, and fat×9. "
-                f"The black line shows logged calories from Apple Health. "
+            macro_subtitle = (
+                f"{period_label} macro calories from meal logs. "
                 f"Days below {MIN_DAILY_CALORIES:.0f} kcal are excluded."
             )
             if not body_mass_plot_df.empty:
-                caption += (
-                    " Body mass from Zepp Life morning readings uses a separate "
-                    "right-hand scale and is drawn above the calories line."
+                macro_subtitle += " Body mass is shown in the subplot below."
+            with chart_panel("Calories and macros", subtitle=macro_subtitle):
+                render_chart(
+                    self._macro_chart_builder.build(
+                        macro_plot_df,
+                        period=period,
+                        body_mass_df=body_mass_plot_df,
+                    )
                 )
-            st.caption(caption)
-            self._render_macro_chart(
-                macro_plot_df,
-                period=period,
-                body_mass_df=body_mass_plot_df,
-            )
 
         if not plot_df.empty:
-            period_label = "monthly" if period == "monthly" else "weekly"
-            point_counts = plot_df.groupby("label", sort=False).size()
-            st.markdown("#### Nutrition trends")
-            st.caption(
-                f"{period_label.capitalize()} averages per logged day on one combined chart. "
-                f"Calories exclude days below {MIN_DAILY_CALORIES:.0f} kcal or with no intake. "
-                "Each metric uses its own real y-axis scale. "
-                + ", ".join(f"{label}: {count} points" for label, count in point_counts.items())
+            trends_subtitle = (
+                f"{period_label} averages per logged day. "
+                f"Calories exclude days below {MIN_DAILY_CALORIES:.0f} kcal."
             )
-            self._render_chart(plot_df, selected_metrics, period=period)
-            self._render_summary(plot_df, selected_metrics)
-            self._render_raw_data(plot_df)
-
-        self._render_filters(sources, available_metrics, year_options=year_options)
+            with chart_panel("Nutrition trends", subtitle=trends_subtitle):
+                self._render_summary(plot_df, selected_metrics)
+                render_chart(self._chart_builder.build(plot_df, selected_metrics, period=period))
 
     def _selected_sources(self, sources: list[str]) -> list[str]:
         if not sources:
@@ -157,9 +156,7 @@ class NutritionView:
         *,
         year_options: list[int],
     ) -> None:
-        """Render compact nutrition chart controls below the plots."""
-        st.markdown("##### Chart options")
-
+        """Render compact nutrition controls above the charts."""
         labels = [metric.label for metric in metrics]
         default = [label for label in self._DEFAULT_METRICS if label in labels]
         if not default:
@@ -173,23 +170,20 @@ class NutritionView:
                     "Sources",
                     options=sources,
                     default=self._selected_sources(sources),
-                    help="Filter meal records by the app that wrote them to Apple Health.",
                     key="nutrition_source_filter",
                 )
             with metric_col:
                 st.multiselect(
-                    "Metrics",
+                    "Trend metrics",
                     options=labels,
                     default=active_labels or default,
-                    help="Choose which nutrition metrics to show on the trend chart.",
                     key="nutrition_metric_filter",
                 )
         else:
             st.multiselect(
-                "Metrics",
+                "Trend metrics",
                 options=labels,
                 default=active_labels or default,
-                help="Choose which nutrition metrics to show on the trend chart.",
                 key="nutrition_metric_filter",
             )
 
@@ -213,20 +207,9 @@ class NutritionView:
             value_text = (
                 f"{latest['value']:.0f} {latest['unit']}"
                 if metric.unit in {"mg", "kcal"}
-                else f"{latest['value']:.1f} {latest['unit']}"
+                else f"{latest['value']:.1f} {metric.unit}"
             )
             columns[index % len(columns)].metric(metric.label, value_text)
-
-    def _render_chart(
-        self,
-        df: pd.DataFrame,
-        metrics: list[NutritionMetric],
-        *,
-        period: Period,
-    ) -> None:
-        """Plot selected nutrition metrics on one combined chart."""
-        chart = self._chart_builder.build(df, metrics, period=period)
-        st.altair_chart(chart, use_container_width=True)
 
     def _load_body_mass_plot(self, selected_years: list[int], period: Period) -> pd.DataFrame:
         """Load body mass aligned to the macro chart period and year filter."""
@@ -241,26 +224,3 @@ class NutritionView:
         daily = daily.copy()
         daily["label"] = BODY_MASS_METRIC.label
         return apply_period(filter_by_years(daily, selected_years), period)
-
-    def _render_macro_chart(
-        self,
-        df: pd.DataFrame,
-        *,
-        period: Period,
-        body_mass_df: pd.DataFrame | None = None,
-    ) -> None:
-        """Plot stacked macro calories with logged calories and body mass overlay."""
-        chart = self._macro_chart_builder.build(
-            df,
-            period=period,
-            body_mass_df=body_mass_df,
-        )
-        st.altair_chart(chart, use_container_width=True)
-
-    def _render_raw_data(self, df: pd.DataFrame) -> None:
-        """Show the underlying chart data."""
-        with st.expander("Raw data"):
-            st.dataframe(
-                df.sort_values(["label", "date"]),
-                use_container_width=True,
-            )
