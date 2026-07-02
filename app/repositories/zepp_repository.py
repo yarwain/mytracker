@@ -77,6 +77,10 @@ class ZeppRepository:
         weekly["date"] = weekly["date"].dt.date
         return weekly
 
+    def load_daily_metric(self, metric: HealthMetric) -> pd.DataFrame:
+        """Load one daily aggregated metric series."""
+        return self._load_daily_metric(metric)
+
     def load_selected_metrics(self, metrics: list[HealthMetric]) -> pd.DataFrame:
         """Load and combine multiple metrics into a long-format DataFrame."""
         frames: list[pd.DataFrame] = []

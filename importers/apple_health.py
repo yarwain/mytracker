@@ -7,7 +7,7 @@ import logging
 import time
 import xml.etree.ElementTree as ET
 import zipfile
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -68,60 +68,12 @@ ACTIVITY_SUMMARY_COLUMNS = [
     "apple_stand_hours_goal",
 ]
 
-NUTRITION_COLUMNS = [
-    "import_id",
-    "source_name",
-    "source_version",
-    "creation_date",
-    "start_date",
-    "end_date",
-    "carbohydrates",
-    "carbohydrates_unit",
-    "fibre",
-    "fibre_unit",
-    "protein",
-    "protein_unit",
-    "sodium",
-    "sodium_unit",
-    "total_fat",
-    "total_fat_unit",
-]
-
-NUTRITION_TYPE_MAP: dict[str, tuple[str, str]] = {
-    "HKQuantityTypeIdentifierDietaryCarbohydrates": ("carbohydrates", "carbohydrates_unit"),
-    "HKQuantityTypeIdentifierDietaryFiber": ("fibre", "fibre_unit"),
-    "HKQuantityTypeIdentifierDietaryProtein": ("protein", "protein_unit"),
-    "HKQuantityTypeIdentifierDietarySodium": ("sodium", "sodium_unit"),
-    "HKQuantityTypeIdentifierDietaryFatTotal": ("total_fat", "total_fat_unit"),
-}
-
-
-@dataclass
-class NutritionEntry:
-    import_id: int
-    source_name: str | None = None
-    source_version: str | None = None
-    creation_date: datetime | None = None
-    start_date: datetime | None = None
-    end_date: datetime | None = None
-    carbohydrates: float | None = None
-    carbohydrates_unit: str | None = None
-    fibre: float | None = None
-    fibre_unit: str | None = None
-    protein: float | None = None
-    protein_unit: str | None = None
-    sodium: float | None = None
-    sodium_unit: str | None = None
-    total_fat: float | None = None
-    total_fat_unit: str | None = None
-
 
 @dataclass(frozen=True)
 class ImportStats:
     records: int
     workouts: int
     activity_summaries: int
-    nutrition: int
     import_id: int
     elapsed_seconds: float
 
@@ -218,7 +170,6 @@ def clear_apple_health_tables(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute("DELETE FROM apple_health_records")
     conn.execute("DELETE FROM apple_health_workouts")
     conn.execute("DELETE FROM apple_health_activity_summaries")
-    conn.execute("DELETE FROM apple_nutrition")
     conn.execute("DELETE FROM imports WHERE source = 'apple_health'")
 
 
@@ -264,19 +215,17 @@ def import_apple_health(
         elapsed = time.perf_counter() - started
         logger.info(
             "Import finished in %.1fs: %s records, %s workouts, "
-            "%s activity summaries, %s nutrition entries (import_id=%s)",
+            "%s activity summaries (import_id=%s)",
             elapsed,
             f"{stats.records:,}",
             f"{stats.workouts:,}",
             f"{stats.activity_summaries:,}",
-            f"{stats.nutrition:,}",
             stats.import_id,
         )
         return ImportStats(
             records=stats.records,
             workouts=stats.workouts,
             activity_summaries=stats.activity_summaries,
-            nutrition=stats.nutrition,
             import_id=stats.import_id,
             elapsed_seconds=elapsed,
         )
@@ -292,12 +241,10 @@ def _load_elements(
     record_batch: list[tuple] = []
     workout_batch: list[tuple] = []
     summary_batch: list[tuple] = []
-    nutrition_pending: dict[tuple, NutritionEntry] = {}
 
     record_count = 0
     workout_count = 0
     summary_count = 0
-    nutrition_count = 0
     elements_seen = 0
     last_progress_log = time.perf_counter()
 
@@ -307,15 +254,6 @@ def _load_elements(
         elements_seen += 1
 
         if tag == "Record":
-            record_type = element.get("type")
-            if record_type in NUTRITION_TYPE_MAP:
-                if _merge_nutrition_record(element, import_id, nutrition_pending):
-                    if len(nutrition_pending) >= BATCH_SIZE:
-                        nutrition_count += _flush_nutrition(
-                            conn, nutrition_pending, record_count, workout_count
-                        )
-                continue
-
             row = _parse_record(element, import_id)
             if row is not None:
                 record_batch.append(row)
@@ -346,7 +284,6 @@ def _load_elements(
                 record_count,
                 workout_count,
                 summary_count,
-                nutrition_count,
                 last_progress_log,
             )
             last_progress_log = time.perf_counter()
@@ -357,26 +294,19 @@ def _load_elements(
         _insert_workouts(conn, workout_batch, record_count, workout_count)
     if summary_batch:
         _insert_activity_summaries(conn, summary_batch)
-    if nutrition_pending:
-        nutrition_count += _flush_nutrition(
-            conn, nutrition_pending, record_count, workout_count
-        )
 
     logger.info(
-        "Parsing complete: %s elements, %s records, %s workouts, "
-        "%s activity summaries, %s nutrition entries",
+        "Parsing complete: %s elements, %s records, %s workouts, %s activity summaries",
         f"{elements_seen:,}",
         f"{record_count:,}",
         f"{workout_count:,}",
         f"{summary_count:,}",
-        f"{nutrition_count:,}",
     )
 
     return ImportStats(
         records=record_count,
         workouts=workout_count,
         activity_summaries=summary_count,
-        nutrition=nutrition_count,
         import_id=import_id,
         elapsed_seconds=0.0,
     )
@@ -387,75 +317,17 @@ def _log_parse_progress(
     record_count: int,
     workout_count: int,
     summary_count: int,
-    nutrition_count: int,
     last_log_started: float,
 ) -> None:
     elapsed = time.perf_counter() - last_log_started
     logger.info(
         "Parse progress: %s elements in last %.1fs | "
-        "totals: records=%s workouts=%s summaries=%s nutrition=%s",
+        "totals: records=%s workouts=%s summaries=%s",
         f"{PARSE_LOG_INTERVAL:,}",
         elapsed,
         f"{record_count:,}",
         f"{workout_count:,}",
         f"{summary_count:,}",
-        f"{nutrition_count:,}",
-    )
-
-
-def _merge_nutrition_record(
-    element: ET.Element,
-    import_id: int,
-    pending: dict[tuple, NutritionEntry],
-) -> bool:
-    record_type = element.get("type")
-    if record_type not in NUTRITION_TYPE_MAP:
-        return False
-
-    start_date = parse_apple_datetime(element.get("startDate"))
-    if start_date is None:
-        return False
-
-    end_date = parse_apple_datetime(element.get("endDate"))
-    source_name = element.get("sourceName")
-    key = (start_date, end_date, source_name)
-
-    entry = pending.get(key)
-    if entry is None:
-        entry = NutritionEntry(
-            import_id=import_id,
-            source_name=source_name,
-            source_version=element.get("sourceVersion"),
-            creation_date=parse_apple_datetime(element.get("creationDate")),
-            start_date=start_date,
-            end_date=end_date,
-        )
-        pending[key] = entry
-
-    value_field, unit_field = NUTRITION_TYPE_MAP[record_type]
-    setattr(entry, value_field, parse_float(element.get("value")))
-    setattr(entry, unit_field, element.get("unit"))
-    return True
-
-
-def _nutrition_to_tuple(entry: NutritionEntry) -> tuple:
-    return (
-        entry.import_id,
-        entry.source_name,
-        entry.source_version,
-        entry.creation_date,
-        entry.start_date,
-        entry.end_date,
-        entry.carbohydrates,
-        entry.carbohydrates_unit,
-        entry.fibre,
-        entry.fibre_unit,
-        entry.protein,
-        entry.protein_unit,
-        entry.sodium,
-        entry.sodium_unit,
-        entry.total_fat,
-        entry.total_fat_unit,
     )
 
 
@@ -583,43 +455,6 @@ def _insert_activity_summaries(conn: duckdb.DuckDBPyConnection, batch: list[tupl
     )
 
 
-def _flush_nutrition(
-    conn: duckdb.DuckDBPyConnection,
-    pending: dict[tuple, NutritionEntry],
-    total_records: int,
-    total_workouts: int,
-) -> int:
-    entries = list(pending.values())
-    pending.clear()
-    _insert_nutrition(conn, entries, total_records, total_workouts)
-    return len(entries)
-
-
-def _insert_nutrition(
-    conn: duckdb.DuckDBPyConnection,
-    entries: Iterable[NutritionEntry],
-    total_records: int,
-    total_workouts: int,
-) -> None:
-    batch = [_nutrition_to_tuple(entry) for entry in entries]
-    if not batch:
-        return
-
-    bulk_insert_ignore(
-        conn,
-        "apple_nutrition",
-        NUTRITION_COLUMNS,
-        batch,
-        dedup_columns=["start_date", "end_date", "source_name"],
-    )
-    logger.info(
-        "Progress after nutrition write: parsed records=%s workouts=%s nutrition=%s",
-        f"{total_records:,}",
-        f"{total_workouts:,}",
-        f"{len(batch):,}",
-    )
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Import Apple Health export.xml into DuckDB")
     parser.add_argument(
@@ -656,8 +491,7 @@ def main() -> None:
         "Imported Apple Health data: "
         f"{stats.records:,} records, "
         f"{stats.workouts:,} workouts, "
-        f"{stats.activity_summaries:,} activity summaries, "
-        f"{stats.nutrition:,} nutrition entries "
+        f"{stats.activity_summaries:,} activity summaries "
         f"(import_id={stats.import_id}, {stats.elapsed_seconds:.1f}s)"
     )
 

@@ -22,11 +22,6 @@ NULLABLE_FLOAT_COLUMNS = {
     "apple_exercise_time_goal",
     "apple_stand_hours",
     "apple_stand_hours_goal",
-    "carbohydrates",
-    "fibre",
-    "protein",
-    "sodium",
-    "total_fat",
 }
 
 TIMESTAMP_COLUMNS = {"start_date", "end_date", "creation_date", "summary_date"}
@@ -46,7 +41,6 @@ def init_schema(
     conn.execute(
         "ALTER TABLE apple_health_records ADD COLUMN IF NOT EXISTS value_text VARCHAR"
     )
-    conn.execute((models_dir / "apple_nutrition.sql").read_text())
     conn.execute((models_dir / "manual_metrics.sql").read_text())
     conn.execute("DROP INDEX IF EXISTS uq_apple_health_records")
     conn.execute(

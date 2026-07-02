@@ -83,6 +83,16 @@
     startDate="2024-06-01 12:00:00 +0000"
     endDate="2024-06-01 12:30:00 +0000"
   />
+  <Record
+    type="HKQuantityTypeIdentifierDietaryEnergyConsumed"
+    unit="kcal"
+    value="520"
+    sourceName="FatSecret"
+    sourceVersion="1.0"
+    creationDate="2024-06-01 12:00:00 +0000"
+    startDate="2024-06-01 12:00:00 +0000"
+    endDate="2024-06-01 12:30:00 +0000"
+  />
   <Workout
     workoutActivityType="HKWorkoutActivityTypeRunning"
     duration="30"

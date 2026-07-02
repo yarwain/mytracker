@@ -3,10 +3,13 @@
 import streamlit as st
 
 from app.database import Database
+from app.repositories.activity_repository import ActivityRepository
 from app.repositories.manual_metrics_repository import ManualMetricsRepository
+from app.repositories.nutrition_repository import NutritionRepository
 from app.repositories.zepp_repository import ZeppRepository
+from app.views.activity_view import ActivityView
 from app.views.manual_metrics_view import ManualMetricsView
-from app.views.zepp_metrics_view import ZeppMetricsView
+from app.views.nutrition_view import NutritionView
 
 
 class MyTrackerApp:
@@ -14,8 +17,15 @@ class MyTrackerApp:
 
     def __init__(self, database: Database | None = None) -> None:
         self._database = database or Database()
-        self._zepp_view = ZeppMetricsView(ZeppRepository(self._database))
-        self._manual_view = ManualMetricsView(ManualMetricsRepository(self._database))
+        self._body_view = ManualMetricsView(
+            ManualMetricsRepository(self._database),
+            ZeppRepository(self._database),
+        )
+        self._nutrition_view = NutritionView(
+            NutritionRepository(self._database),
+            ZeppRepository(self._database),
+        )
+        self._activity_view = ActivityView(ActivityRepository(self._database))
 
     def run(self) -> None:
         """Render the dashboard."""
@@ -29,9 +39,11 @@ class MyTrackerApp:
 
         self._database.ensure_schema()
 
-        self._manual_view.render()
+        self._body_view.render()
         st.divider()
-        self._zepp_view.render()
+        self._nutrition_view.render()
+        st.divider()
+        self._activity_view.render()
 
 
 def main() -> None:

@@ -47,12 +47,13 @@ uv run import-apple-health ~/Downloads/export.zip
 uv run import-apple-health ~/Downloads/export.zip --replace
 ```
 
-The importer streams `export.xml` and loads three tables:
+The importer streams `export.xml` and loads these tables:
 
-- `apple_health_records` — metrics such as steps, heart rate, sleep
+- `apple_health_records` — metrics such as steps, heart rate, sleep, and FatSecret dietary records
 - `apple_health_workouts` — workouts with duration and distance
 - `apple_health_activity_summaries` — daily Move / Exercise / Stand rings
-- `apple_nutrition` — carbohydrates, fibre, protein, sodium, total fat per meal
+
+Dietary data (carbohydrates, protein, fat, fibre, sodium, calories) is stored as individual rows in `apple_health_records`, same as other Apple Health quantity records.
 
 Re-imports skip duplicate rows. Use `--replace` to wipe existing Apple Health data first.
 

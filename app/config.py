@@ -41,6 +41,7 @@ ZEPP_METRICS: tuple[HealthMetric, ...] = (
 )
 
 METRIC_BY_TYPE = {metric.record_type: metric for metric in ZEPP_METRICS}
+BODY_MASS_METRIC = ZEPP_METRICS[0]
 
 
 @dataclass(frozen=True)
@@ -69,3 +70,47 @@ ENTERABLE_METRIC_KEYS = frozenset(metric.key for metric in MANUAL_ENTRY_MEASUREM
 
 # Backward-compatible alias for entry-only lists.
 MANUAL_BODY_MEASUREMENTS = MANUAL_ENTRY_MEASUREMENTS
+
+
+@dataclass(frozen=True)
+class NutritionMetric:
+    """Definition of a dietary Apple Health record type."""
+
+    record_type: str
+    label: str
+    unit: str
+    min_daily_calories: float | None = None
+
+
+MIN_DAILY_CALORIES = 1000.0
+
+NUTRITION_METRICS: tuple[NutritionMetric, ...] = (
+    NutritionMetric("HKQuantityTypeIdentifierDietaryCarbohydrates", "Carbohydrates", "g"),
+    NutritionMetric("HKQuantityTypeIdentifierDietaryProtein", "Protein", "g"),
+    NutritionMetric("HKQuantityTypeIdentifierDietaryFatTotal", "Total fat", "g"),
+    NutritionMetric("HKQuantityTypeIdentifierDietaryFiber", "Fibre", "g"),
+    NutritionMetric("HKQuantityTypeIdentifierDietarySodium", "Sodium", "mg"),
+    NutritionMetric(
+        "HKQuantityTypeIdentifierDietaryEnergyConsumed",
+        "Calories",
+        "kcal",
+        min_daily_calories=MIN_DAILY_CALORIES,
+    ),
+)
+
+NUTRITION_RECORD_TYPES = tuple(metric.record_type for metric in NUTRITION_METRICS)
+NUTRITION_METRIC_BY_TYPE = {metric.record_type: metric for metric in NUTRITION_METRICS}
+
+POLAR_SOURCE = "Polar Flow"
+GARMIN_SOURCE = "Garmin Connect"
+PREFERRED_ACTIVITY_SOURCES = (POLAR_SOURCE, GARMIN_SOURCE)
+
+ACTIVITY_STEP_METRIC = HealthMetric(
+    "HKQuantityTypeIdentifierStepCount",
+    "Steps",
+    aggregation="sum",
+)
+
+WORKOUT_MEASURE_COUNT = "count"
+WORKOUT_MEASURE_DURATION = "duration"
+WORKOUT_MEASURES = (WORKOUT_MEASURE_COUNT, WORKOUT_MEASURE_DURATION)
