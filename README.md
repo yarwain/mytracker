@@ -2,6 +2,8 @@
 
 Personal health statistics from phone apps — import from Apple Health, Garmin, and FatSecret, store in DuckDB, and visualize with Streamlit.
 
+NB: by default it uses height 160 to measure fat percentage. Some other numbers and rules can also be connected to my particular needs.
+
 ## Project layout
 
 ```
