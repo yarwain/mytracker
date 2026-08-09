@@ -104,45 +104,31 @@ class ManualMetricsView:
             self._render_chart(plot_df, chart_metrics, period=period)
 
     def _render_entry_form(self) -> None:
-        """Render a compact single-row form for entering manual measurements."""
-        with st.form("manual_measurements_form", clear_on_submit=True):
-            date_col, neck_col, waist_col, hip_col, save_col = st.columns([1.4, 1, 1, 1, 0.7])
-            values: dict[str, float] = {}
+        """Render a compact form for entering manual measurements."""
+        enterable = self._manual_repository.list_enterable_metrics()
+        row_size = 4
 
-            with date_col:
+        with st.form("manual_measurements_form", clear_on_submit=True):
+            values: dict[str, float] = {}
+            first_row = enterable[:row_size]
+            second_row = enterable[row_size:]
+
+            cols = st.columns([1.4] + [1] * len(first_row))
+            with cols[0]:
                 measured_date = st.date_input("Date", value=date.today())
-            with neck_col:
-                neck = st.number_input(
-                    "Neck (cm)",
-                    min_value=0.0,
-                    step=0.1,
-                    format="%.1f",
-                    key="manual_input_neck",
-                )
-                if neck > 0:
-                    values["neck"] = neck
-            with waist_col:
-                waist = st.number_input(
-                    "Waist (cm)",
-                    min_value=0.0,
-                    step=0.1,
-                    format="%.1f",
-                    key="manual_input_waist",
-                )
-                if waist > 0:
-                    values["waist"] = waist
-            with hip_col:
-                hip = st.number_input(
-                    "Hips (cm)",
-                    min_value=0.0,
-                    step=0.1,
-                    format="%.1f",
-                    key="manual_input_hip",
-                )
-                if hip > 0:
-                    values["hip"] = hip
-            with save_col:
-                st.write("")
+            for column, metric in zip(cols[1:], first_row, strict=True):
+                with column:
+                    self._collect_metric_input(metric, values)
+
+            if second_row:
+                bottom_cols = st.columns([1] * (len(second_row) + 1))
+                for column, metric in zip(bottom_cols[:-1], second_row, strict=True):
+                    with column:
+                        self._collect_metric_input(metric, values)
+                with bottom_cols[-1]:
+                    st.write("")
+                    submitted = st.form_submit_button("Save", use_container_width=True)
+            else:
                 submitted = st.form_submit_button("Save", use_container_width=True)
 
         if submitted:
@@ -164,6 +150,21 @@ class ManualMetricsView:
                 message += f" Body fat updated to {body_fat:.1f}%."
             st.success(message)
             st.rerun()
+
+    def _collect_metric_input(self, metric: ManualMetric, values: dict[str, float]) -> None:
+        """Read one measurement input and store it when greater than zero."""
+        label = metric.label.replace(" size", "")
+        if metric.unit == "kg":
+            label = "Weight"
+        value = st.number_input(
+            f"{label} ({metric.unit})",
+            min_value=0.0,
+            step=0.1,
+            format="%.1f",
+            key=f"manual_input_{metric.key}",
+        )
+        if value > 0:
+            values[metric.key] = value
 
     def _render_metric_filter(self, labels: list[str]) -> list[str]:
         """Render a multiselect for choosing visible measurements."""

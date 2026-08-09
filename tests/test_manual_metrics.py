@@ -50,3 +50,20 @@ def test_manual_metrics_upsert_and_load(tmp_path) -> None:
         hip_cm=measurements["hip"],
         height_cm=USER_HEIGHT_CM,
     )
+
+
+def test_manual_metrics_upsert_additional_measurements(tmp_path) -> None:
+    db_path = tmp_path / "health.duckdb"
+    database = Database(db_path)
+    with database.writable_connection() as conn:
+        init_schema(conn)
+
+    repository = ManualMetricsRepository(database)
+    repository.upsert_measurements(
+        date(2024, 6, 2),
+        {"thigh": 58.0, "arm": 28.0, "belly": 82.0},
+    )
+
+    frame = repository.load_metrics()
+    labels = set(frame["label"])
+    assert {"Thigh size", "Arm size", "Belly size"}.issubset(labels)

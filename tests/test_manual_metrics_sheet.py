@@ -48,6 +48,15 @@ def test_load_measurements_from_csv_weight_only_row() -> None:
     assert measurements == [(date(2026, 1, 10), {"weight": 54.2})]
 
 
+def test_load_measurements_from_csv_parses_thigh_arm_belly() -> None:
+    measurements = load_measurements_from_csv(
+        "date,thigh,arm,belly\n10.01.2026,58.0,28.0,82.0\n",
+    )
+    assert measurements == [
+        (date(2026, 1, 10), {"thigh": 58.0, "arm": 28.0, "belly": 82.0}),
+    ]
+
+
 def test_load_measurements_from_csv_requires_date_column() -> None:
     with pytest.raises(ValueError, match="missing required column: date"):
         load_measurements_from_csv("weight,notes\n70,test\n")

@@ -58,6 +58,9 @@ MANUAL_ENTRY_MEASUREMENTS: tuple[ManualMetric, ...] = (
     ManualMetric("neck", "Neck size"),
     ManualMetric("waist", "Waist size"),
     ManualMetric("hip", "Hip size"),
+    ManualMetric("thigh", "Thigh size"),
+    ManualMetric("arm", "Arm size"),
+    ManualMetric("belly", "Belly size"),
     ManualMetric("weight", "Body mass", unit="kg"),
 )
 

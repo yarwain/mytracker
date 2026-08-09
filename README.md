@@ -59,17 +59,17 @@ Re-imports skip duplicate rows. Use `--replace` to wipe existing Apple Health da
 
 ## Seed manual metrics
 
-Neck, waist, hip, and weight can be loaded from a public Google Sheet into the `manual_metrics` table. The script also calculates US Army body fat for dates with neck, waist, and hip.
+Neck, waist, hip, thigh, arm, belly, and weight can be loaded from a public Google Sheet into the `manual_metrics` table. The script also calculates US Army body fat for dates with neck, waist, and hip.
 
 The sheet must be readable without login: Share → General access → Anyone with the link → Viewer.
 
 Expected columns (first row). Only `date` is required; other columns are optional per row:
 
-| date | neck | waist | hip | weight |
-|------|------|-------|-----|--------|
-| 10.01.2026 | 31.5 | 70.5 | 96.5 | 54.2 |
+| date | neck | waist | hip | thigh | arm | belly | weight |
+|------|------|-------|-----|-------|-----|-------|--------|
+| 10.01.2026 | 31.5 | 70.5 | 96.5 | 58.0 | 28.0 | 82.0 | 54.2 |
 
-Weight is in kg. Dates use `DD.MM.YYYY`. Rows without a date or without any measurement value are skipped. Re-imports upsert by date, so running the script again updates existing dates.
+Weight is in kg; other measurements are in cm. Dates use `DD.MM.YYYY`. Rows without a date or without any measurement value are skipped. Re-imports upsert by date, so running the script again updates existing dates.
 
 ```bash
 uv run python scripts/seed_manual_metrics.py

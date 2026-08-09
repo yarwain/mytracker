@@ -12,12 +12,15 @@ import pandas as pd
 
 DEFAULT_SHEET_ID = "1J0eVC1AyV5Y4ooDRVrhFqdDZaH0UvB3TuQFNG_oEwwY"
 
-DATE_COLUMNS = ("date", "дата")
+DATE_COLUMNS = ("date",)
 METRIC_COLUMNS: dict[str, tuple[str, ...]] = {
-    "neck": ("neck", "шея"),
-    "waist": ("waist", "талия"),
-    "hip": ("hip", "бедра", "hips"),
-    "weight": ("weight", "body_mass", "body_mass_kg", "вес"),
+    "neck": ("neck",),
+    "waist": ("waist",),
+    "hip": ("hip", "hips"),
+    "thigh": ("thigh",),
+    "arm": ("arm",),
+    "belly": ("belly",),
+    "weight": ("weight", "body_mass", "body_mass_kg"),
 }
 
 DATE_FORMATS = ("%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y")
@@ -111,7 +114,7 @@ def load_measurements_from_csv(csv_text: str) -> list[SheetMeasurement]:
     frame.columns = [_normalize_column(column) for column in frame.columns]
     date_column = _resolve_column(list(frame.columns), DATE_COLUMNS)
     if date_column is None:
-        msg = "CSV is missing required column: date. Expected a date header like date or дата."
+        msg = "CSV is missing required column: date."
         raise ValueError(msg)
 
     metric_columns = {
