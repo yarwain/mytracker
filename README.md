@@ -57,6 +57,28 @@ Dietary data (carbohydrates, protein, fat, fibre, sodium, calories) is stored as
 
 Re-imports skip duplicate rows. Use `--replace` to wipe existing Apple Health data first.
 
+## Seed manual metrics
+
+Neck, waist, hip, and weight can be loaded from a public Google Sheet into the `manual_metrics` table. The script also calculates US Army body fat for dates with neck, waist, and hip.
+
+The sheet must be readable without login: Share → General access → Anyone with the link → Viewer.
+
+Expected columns (first row). Only `date` is required; other columns are optional per row:
+
+| date | neck | waist | hip | weight |
+|------|------|-------|-----|--------|
+| 10.01.2026 | 31.5 | 70.5 | 96.5 | 54.2 |
+
+Weight is in kg. Dates use `DD.MM.YYYY`. Rows without a date or without any measurement value are skipped. Re-imports upsert by date, so running the script again updates existing dates.
+
+```bash
+uv run python scripts/seed_manual_metrics.py
+uv run python scripts/seed_manual_metrics.py --csv measurements.csv
+uv run python scripts/seed_manual_metrics.py --gid 123456789
+```
+
+Use `--sheet-id` to load a different Google Sheet. Use `--csv` to load from a local file instead.
+
 ## Database
 
 The DuckDB file lives at `data/health.duckdb` (gitignored). Schema files live in `models/` and are applied automatically on import.

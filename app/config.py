@@ -58,6 +58,7 @@ MANUAL_ENTRY_MEASUREMENTS: tuple[ManualMetric, ...] = (
     ManualMetric("neck", "Neck size"),
     ManualMetric("waist", "Waist size"),
     ManualMetric("hip", "Hip size"),
+    ManualMetric("weight", "Body mass", unit="kg"),
 )
 
 BODY_FAT_METRIC = ManualMetric("body_fat", "Body fat (US Army)", unit="%")
