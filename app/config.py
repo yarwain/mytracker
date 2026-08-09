@@ -88,6 +88,7 @@ class NutritionMetric:
 
 
 MIN_DAILY_CALORIES = 1000.0
+MIN_VALID_LOGGED_DAYS = 4
 
 NUTRITION_METRICS: tuple[NutritionMetric, ...] = (
     NutritionMetric("HKQuantityTypeIdentifierDietaryCarbohydrates", "Carbohydrates", "g"),
@@ -105,14 +106,24 @@ NUTRITION_METRICS: tuple[NutritionMetric, ...] = (
 
 NUTRITION_RECORD_TYPES = tuple(metric.record_type for metric in NUTRITION_METRICS)
 NUTRITION_METRIC_BY_TYPE = {metric.record_type: metric for metric in NUTRITION_METRICS}
+CALORIES_CONSUMED_METRIC = NUTRITION_METRIC_BY_TYPE[
+    "HKQuantityTypeIdentifierDietaryEnergyConsumed"
+]
 
 POLAR_SOURCE = "Polar Flow"
 GARMIN_SOURCE = "Garmin Connect"
+FATSECRET_SOURCE = "FatSecret"
 PREFERRED_ACTIVITY_SOURCES = (POLAR_SOURCE, GARMIN_SOURCE)
 
 ACTIVITY_STEP_METRIC = HealthMetric(
     "HKQuantityTypeIdentifierStepCount",
     "Steps",
+    aggregation="sum",
+)
+
+ACTIVE_ENERGY_METRIC = HealthMetric(
+    "HKQuantityTypeIdentifierActiveEnergyBurned",
+    "Calories spent",
     aggregation="sum",
 )
 

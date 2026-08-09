@@ -2,7 +2,14 @@
 
 import pandas as pd
 
-from app.config import MIN_DAILY_CALORIES, NUTRITION_METRICS, NUTRITION_RECORD_TYPES, NutritionMetric
+from app.config import (
+    CALORIES_CONSUMED_METRIC,
+    FATSECRET_SOURCE,
+    MIN_DAILY_CALORIES,
+    NUTRITION_METRICS,
+    NUTRITION_RECORD_TYPES,
+    NutritionMetric,
+)
 from app.database import Database
 
 
@@ -78,15 +85,34 @@ class NutritionRepository:
         )
 
     @staticmethod
-    def _filter_daily_for_metric(daily: pd.DataFrame, metric: NutritionMetric) -> pd.DataFrame:
-        """Apply metric-specific day filters before weekly aggregation."""
-        if daily.empty:
-            return daily
+    def _align_daily_to_logged_days(
+        daily: pd.DataFrame,
+        logged_dates: pd.DataFrame,
+        metric: NutritionMetric,
+    ) -> pd.DataFrame:
+        """Align one metric to logged meal days, using zero when a valid day has no rows."""
+        base = logged_dates[["date"]].drop_duplicates().copy()
+        if base.empty:
+            return pd.DataFrame(columns=["date", "value", "unit", "reading_count"])
 
-        values = daily["value"].fillna(0)
-        if metric.min_daily_calories is not None:
-            return daily.loc[values >= metric.min_daily_calories].copy()
-        return daily.loc[values > 0].copy()
+        if daily.empty:
+            aligned = base.copy()
+            aligned["value"] = 0.0
+            aligned["unit"] = metric.unit
+            aligned["reading_count"] = 0
+            return aligned
+
+        aligned = base.merge(daily, on="date", how="left")
+        aligned["value"] = aligned["value"].fillna(0.0)
+        aligned["unit"] = aligned["unit"].fillna(metric.unit)
+        aligned["reading_count"] = aligned["reading_count"].fillna(0).astype(int)
+        return aligned
+
+    def _logged_days(self, *, sources: list[str] | None = None) -> pd.DataFrame:
+        logged = self.load_macro_calorie_breakdown(sources=sources)
+        if logged.empty:
+            return pd.DataFrame(columns=["date"])
+        return logged[["date"]]
 
     @staticmethod
     def _aggregate_weekly_average(daily: pd.DataFrame) -> pd.DataFrame:
@@ -116,15 +142,41 @@ class NutritionRepository:
         *,
         sources: list[str] | None = None,
     ) -> pd.DataFrame:
-        """Load weekly average per logged day for one nutrition metric."""
+        """Load weekly average per logged meal day for one nutrition metric."""
+        logged_dates = self._logged_days(sources=sources)
+        if logged_dates.empty:
+            return pd.DataFrame(columns=["date", "value", "unit", "reading_count", "day_count"])
+
         daily = self._load_daily_metric(metric, sources=sources)
-        daily = self._filter_daily_for_metric(daily, metric)
+        daily = self._align_daily_to_logged_days(daily, logged_dates, metric)
         weekly = self._aggregate_weekly_average(daily)
         if weekly.empty:
             return weekly
-        if "unit" not in weekly.columns:
-            weekly["unit"] = metric.unit
+        weekly["unit"] = metric.unit
         return weekly
+
+    def load_daily_metrics_aligned(
+        self,
+        metrics: list[NutritionMetric],
+        *,
+        sources: list[str] | None = None,
+    ) -> pd.DataFrame:
+        """Load daily metrics aligned to logged meal days in long format."""
+        logged_dates = self._logged_days(sources=sources)
+        if logged_dates.empty:
+            return pd.DataFrame(
+                columns=["date", "value", "unit", "reading_count", "record_type", "label"]
+            )
+
+        frames: list[pd.DataFrame] = []
+        for metric in metrics:
+            daily = self._load_daily_metric(metric, sources=sources)
+            aligned = self._align_daily_to_logged_days(daily, logged_dates, metric)
+            aligned["record_type"] = metric.record_type
+            aligned["label"] = metric.label
+            frames.append(aligned)
+
+        return pd.concat(frames, ignore_index=True)
 
     def load_selected_metrics(
         self,
@@ -133,16 +185,8 @@ class NutritionRepository:
         sources: list[str] | None = None,
     ) -> pd.DataFrame:
         """Load and combine multiple nutrition metrics into a long-format DataFrame."""
-        frames: list[pd.DataFrame] = []
-        for metric in metrics:
-            frame = self.load_weekly_metric(metric, sources=sources)
-            if frame.empty:
-                continue
-            frame["record_type"] = metric.record_type
-            frame["label"] = metric.label
-            frames.append(frame)
-
-        if not frames:
+        daily = self.load_daily_metrics_aligned(metrics, sources=sources)
+        if daily.empty:
             return pd.DataFrame(
                 columns=[
                     "date",
@@ -155,7 +199,60 @@ class NutritionRepository:
                 ]
             )
 
-        return pd.concat(frames, ignore_index=True)
+        weekly_frames: list[pd.DataFrame] = []
+        for metric in metrics:
+            metric_daily = daily[daily["label"] == metric.label].copy()
+            weekly = self._aggregate_weekly_average(metric_daily)
+            if weekly.empty:
+                continue
+            weekly["record_type"] = metric.record_type
+            weekly["label"] = metric.label
+            weekly["unit"] = metric.unit
+            weekly_frames.append(weekly)
+
+        if not weekly_frames:
+            return pd.DataFrame(
+                columns=[
+                    "date",
+                    "value",
+                    "unit",
+                    "reading_count",
+                    "day_count",
+                    "record_type",
+                    "label",
+                ]
+            )
+
+        return pd.concat(weekly_frames, ignore_index=True)
+
+    def load_daily_calories_consumed(
+        self,
+        *,
+        sources: list[str] | None = None,
+    ) -> pd.DataFrame:
+        """Load daily logged calorie totals for one or more nutrition sources."""
+        daily = self._load_daily_metric(CALORIES_CONSUMED_METRIC, sources=sources)
+        if daily.empty:
+            return daily
+
+        daily = daily.copy()
+        daily["label"] = CALORIES_CONSUMED_METRIC.label
+        return daily
+
+    def has_fatsecret_calories(self) -> bool:
+        """Return whether FatSecret calorie records exist."""
+        count = self._database.query(
+            """
+            SELECT 1 AS present
+            FROM apple_health_records
+            WHERE type = ?
+              AND value IS NOT NULL
+              AND source_name = ?
+            LIMIT 1
+            """,
+            [CALORIES_CONSUMED_METRIC.record_type, FATSECRET_SOURCE],
+        )
+        return not count.empty
 
     def load_macro_calorie_breakdown(self, *, sources: list[str] | None = None) -> pd.DataFrame:
         """Load daily macro grams and logged calories for stacked calorie charts."""

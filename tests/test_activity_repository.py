@@ -3,12 +3,38 @@ from datetime import datetime
 from app.charts.aggregation import aggregate_weekly_average, resample_workout_breakdown
 from app.config import (
     ACTIVITY_STEP_METRIC,
+    ACTIVE_ENERGY_METRIC,
     GARMIN_SOURCE,
     POLAR_SOURCE,
 )
 from app.database import Database
 from app.repositories.activity_repository import ActivityRepository, format_workout_activity
 from importers.db import init_schema
+
+
+def _insert_energy(
+    conn,
+    *,
+    start_date: datetime,
+    source_name: str,
+    value: float,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO apple_health_records (
+            import_id, type, source_name, start_date, end_date, value, unit
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            1,
+            ACTIVE_ENERGY_METRIC.record_type,
+            source_name,
+            start_date,
+            start_date,
+            value,
+            "kcal",
+        ],
+    )
 
 
 def _insert_steps(
@@ -224,6 +250,40 @@ def test_activity_repository_prefers_garmin_over_apple_health_on_same_day(tmp_pa
     assert len(steps) == 1
     assert steps.iloc[0]["source_name"] == GARMIN_SOURCE
     assert steps.iloc[0]["value"] == 8000.0
+
+
+def test_activity_repository_loads_energy_with_polar_priority(tmp_path) -> None:
+    db_path = tmp_path / "health.duckdb"
+    database = Database(db_path)
+    with database.writable_connection() as conn:
+        init_schema(conn)
+        _insert_energy(
+            conn,
+            start_date=datetime(2025, 4, 7, 12, 0),
+            source_name=GARMIN_SOURCE,
+            value=700.0,
+        )
+        _insert_energy(
+            conn,
+            start_date=datetime(2025, 4, 7, 18, 0),
+            source_name=POLAR_SOURCE,
+            value=650.0,
+        )
+        _insert_energy(
+            conn,
+            start_date=datetime(2025, 4, 8, 12, 0),
+            source_name=GARMIN_SOURCE,
+            value=600.0,
+        )
+
+    repository = ActivityRepository(database)
+    energy = repository.load_daily_energy_burned()
+
+    assert len(energy) == 2
+    assert energy.iloc[0]["source_name"] == POLAR_SOURCE
+    assert energy.iloc[0]["value"] == 650.0
+    assert energy.iloc[1]["source_name"] == GARMIN_SOURCE
+    assert energy.iloc[1]["value"] == 600.0
 
 
 def test_format_workout_activity() -> None:

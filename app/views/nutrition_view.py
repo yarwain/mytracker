@@ -3,10 +3,26 @@
 import pandas as pd
 import streamlit as st
 
-from app.charts.aggregation import Period, resample_breakdown
+from app.charts.aggregation import (
+    Period,
+    mask_low_coverage_periods,
+    resample_breakdown,
+    resample_energy_balance,
+    resample_period,
+    valid_logged_days_by_period,
+)
+from app.charts.energy_balance_chart import EnergyBalanceChart
 from app.charts.macro_calorie_chart import MacroCalorieChart
 from app.charts.metric_trend_chart import MetricTrendChart
-from app.config import BODY_MASS_METRIC, MIN_DAILY_CALORIES, NutritionMetric
+from app.config import (
+    GARMIN_SOURCE,
+    MIN_DAILY_CALORIES,
+    MIN_VALID_LOGGED_DAYS,
+    POLAR_SOURCE,
+    NutritionMetric,
+)
+from app.repositories.body_mass_repository import BodyMassRepository
+from app.repositories.energy_balance_repository import EnergyBalanceRepository
 from app.repositories.nutrition_repository import NutritionRepository
 from app.repositories.zepp_repository import ZeppRepository
 from app.views.chart_controls import (
@@ -29,16 +45,26 @@ class NutritionView:
         self,
         repository: NutritionRepository | None = None,
         zepp_repository: ZeppRepository | None = None,
+        energy_balance_repository: EnergyBalanceRepository | None = None,
+        body_mass_repository: BodyMassRepository | None = None,
     ) -> None:
         self._repository = repository or NutritionRepository()
         self._zepp_repository = zepp_repository or ZeppRepository()
+        self._energy_balance_repository = (
+            energy_balance_repository or EnergyBalanceRepository(nutrition_repository=self._repository)
+        )
+        self._body_mass_repository = body_mass_repository or BodyMassRepository(
+            zepp_repository=self._zepp_repository,
+        )
         self._chart_builder = MetricTrendChart()
         self._macro_chart_builder = MacroCalorieChart()
+        self._energy_balance_chart_builder = EnergyBalanceChart()
 
     def render(self) -> None:
         """Draw the nutrition section."""
         available_metrics = self._repository.list_available_metrics()
-        if not available_metrics:
+        if not available_metrics and not self._energy_balance_repository.has_data():
+            st.subheader("Nutrition")
             st.warning(
                 "No nutrition data found in `apple_health_records`. Import Apple Health first."
             )
@@ -51,55 +77,93 @@ class NutritionView:
         year_options = available_years(probe_df) if not probe_df.empty else []
 
         filter_toolbar()
-        self._render_filters(sources, available_metrics, year_options=year_options)
+        if available_metrics:
+            self._render_filters(sources, available_metrics, year_options=year_options)
+        elif year_options:
+            render_year_period_row(
+                year_options,
+                year_key="nutrition_years",
+                period_key="nutrition_period",
+            )
+        else:
+            render_period_filter(key="nutrition_period")
 
         selected_sources = self._selected_sources(sources)
-        selected_metrics = self._selected_metrics(available_metrics)
+        selected_metrics = self._selected_metrics(available_metrics) if available_metrics else []
         selected_years = self._selected_years(year_options)
         period = self._selected_period()
+        period_label = "Monthly" if period == "monthly" else "Weekly"
+        logged_day_note = (
+            f"Periods with fewer than {MIN_VALID_LOGGED_DAYS} logged days "
+            f"above {MIN_DAILY_CALORIES:.0f} kcal show no nutrition values."
+        )
 
-        df = pd.DataFrame()
+        breakdown_filtered = self._repository.load_macro_calorie_breakdown(
+            sources=selected_sources or None,
+        )
+        breakdown_filtered = filter_by_years(breakdown_filtered, selected_years)
+        valid_day_counts = valid_logged_days_by_period(breakdown_filtered, period)
+
+        energy_balance_df = self._energy_balance_repository.load_daily_balance(
+            sources=selected_sources or None,
+        )
+        has_energy_balance = not energy_balance_df.empty
+
+        if not year_options and not energy_balance_df.empty:
+            year_options = available_years(energy_balance_df)
+            selected_years = self._selected_years(year_options)
+
+        if has_energy_balance:
+            balance_plot_df = resample_energy_balance(
+                filter_by_years(energy_balance_df, selected_years),
+                period,
+            )
+            if not balance_plot_df.empty:
+                balance_subtitle = (
+                    f"{period_label} totals. Spent calories use {POLAR_SOURCE} when both "
+                    f"{POLAR_SOURCE} and {GARMIN_SOURCE} report the same day. "
+                    "Consumed calories use the same meal-log sources and day filter as "
+                    f"Calories and macros. The subplot shows consumed minus spent. {logged_day_note}"
+                )
+                with chart_panel("Calories spent vs consumed", subtitle=balance_subtitle):
+                    render_chart(
+                        self._energy_balance_chart_builder.build(balance_plot_df, period=period)
+                    )
+
+        if not available_metrics:
+            return
+
+        plot_df = pd.DataFrame()
         if selected_metrics:
-            df = self._repository.load_selected_metrics(
+            daily_metrics = self._repository.load_daily_metrics_aligned(
                 selected_metrics,
                 sources=selected_sources or None,
             )
+            plot_df = mask_low_coverage_periods(
+                resample_period(filter_by_years(daily_metrics, selected_years), period),
+                valid_day_counts,
+                value_columns=["value"],
+            )
 
-        breakdown_df = self._repository.load_macro_calorie_breakdown(
-            sources=selected_sources or None,
+        macro_plot_df = resample_breakdown(breakdown_filtered, period)
+        body_mass_plot_df = mask_low_coverage_periods(
+            self._load_body_mass_plot(selected_years, period),
+            valid_day_counts,
+            value_columns=["value"],
         )
-
-        if df.empty and breakdown_df.empty:
-            st.warning("No data for the selected metrics and sources.")
-            return
-
-        if not year_options:
-            year_options = available_years(df if not df.empty else breakdown_df)
-            selected_years = self._selected_years(year_options)
-
-        plot_df = pd.DataFrame()
-        if not df.empty:
-            plot_df = apply_period(filter_by_years(df, selected_years), period)
-
-        macro_plot_df = resample_breakdown(
-            filter_by_years(breakdown_df, selected_years),
-            period,
-        )
-        body_mass_plot_df = self._load_body_mass_plot(selected_years, period)
 
         if plot_df.empty and macro_plot_df.empty:
-            st.warning("No data for the selected years.")
             return
-
-        period_label = "Monthly" if period == "monthly" else "Weekly"
 
         if not macro_plot_df.empty:
             macro_subtitle = (
                 f"{period_label} macro calories from meal logs. "
-                f"Days below {MIN_DAILY_CALORIES:.0f} kcal are excluded."
+                f"Days below {MIN_DAILY_CALORIES:.0f} kcal are excluded. {logged_day_note}"
             )
             if not body_mass_plot_df.empty:
-                macro_subtitle += " Body mass is shown in the subplot below."
+                macro_subtitle += (
+                    " Body mass uses manual weight when available, otherwise Zepp morning readings."
+                )
             with chart_panel("Calories and macros", subtitle=macro_subtitle):
                 render_chart(
                     self._macro_chart_builder.build(
@@ -112,7 +176,7 @@ class NutritionView:
         if not plot_df.empty:
             trends_subtitle = (
                 f"{period_label} averages per logged day. "
-                f"Calories exclude days below {MIN_DAILY_CALORIES:.0f} kcal."
+                f"Calories exclude days below {MIN_DAILY_CALORIES:.0f} kcal. {logged_day_note}"
             )
             with chart_panel("Nutrition trends", subtitle=trends_subtitle):
                 self._render_summary(plot_df, selected_metrics)
@@ -212,15 +276,9 @@ class NutritionView:
             columns[index % len(columns)].metric(metric.label, value_text)
 
     def _load_body_mass_plot(self, selected_years: list[int], period: Period) -> pd.DataFrame:
-        """Load body mass aligned to the macro chart period and year filter."""
-        available = self._zepp_repository.list_available_metrics()
-        if BODY_MASS_METRIC not in available:
-            return pd.DataFrame(columns=["date", "value", "unit", "label"])
-
-        daily = self._zepp_repository.load_daily_metric(BODY_MASS_METRIC)
+        """Load unified body mass aligned to the macro chart period and year filter."""
+        daily = self._body_mass_repository.load_daily()
         if daily.empty:
             return pd.DataFrame(columns=["date", "value", "unit", "label"])
 
-        daily = daily.copy()
-        daily["label"] = BODY_MASS_METRIC.label
         return apply_period(filter_by_years(daily, selected_years), period)

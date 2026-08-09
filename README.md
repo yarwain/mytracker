@@ -43,8 +43,9 @@ uv run streamlit run app/main.py
 Export from the iPhone Health app (Settings → Health → Export All Health Data). Then import the zip or `export.xml`:
 
 ```bash
-uv run import-apple-health ~/Downloads/export.zip
-uv run import-apple-health ~/Downloads/export.zip --replace
+uv run import-apple-health ~/Yandex.Disk.localized/export.zip
+uv run import-apple-health ~/Yandex.Disk.localized/export.zip --replace
+
 ```
 
 The importer streams `export.xml` and loads these tables:

@@ -120,12 +120,12 @@ def test_nutrition_repository_weekly_macro_average(tmp_path) -> None:
 
     assert len(weekly) == 1
     assert weekly.iloc[0]["date"] == datetime(2024, 6, 3).date()
-    assert weekly.iloc[0]["value"] == pytest.approx((200.0 + 10.0 + 150.0) / 3)
-    assert weekly.iloc[0]["day_count"] == 3
+    assert weekly.iloc[0]["value"] == pytest.approx((200.0 + 150.0) / 2)
+    assert weekly.iloc[0]["day_count"] == 2
 
     assert len(fatsecret_only) == 1
-    assert fatsecret_only.iloc[0]["value"] == pytest.approx((200.0 + 10.0) / 2)
-    assert fatsecret_only.iloc[0]["day_count"] == 2
+    assert fatsecret_only.iloc[0]["value"] == pytest.approx(200.0)
+    assert fatsecret_only.iloc[0]["day_count"] == 1
 
     assert repository.list_sources() == ["FatSecret", "Lifesum"]
 
@@ -212,3 +212,67 @@ def test_macro_calorie_breakdown_filters_and_computes_kcal(tmp_path) -> None:
     assert row["protein_kcal"] == 200.0
     assert row["fat_kcal"] == 180.0
     assert row["calories"] == 1500.0
+
+
+def test_weekly_average_uses_only_logged_meal_days(tmp_path) -> None:
+    db_path = tmp_path / "health.duckdb"
+    database = Database(db_path)
+    with database.writable_connection() as conn:
+        init_schema(conn)
+        for day in range(7):
+            calories = 1500.0 if day != 2 else 500.0
+            _insert_meal(
+                conn,
+                start_date=datetime(2024, 6, 3 + day, 12, 0),
+                source_name="FatSecret",
+                carbohydrates=100.0 + day,
+                protein=50.0,
+                total_fat=20.0,
+                calories=calories,
+            )
+
+    repository = NutritionRepository(database)
+    carbs_metric = next(
+        metric for metric in NUTRITION_METRICS if metric.record_type.endswith("Carbohydrates")
+    )
+    weekly = repository.load_weekly_metric(carbs_metric)
+
+    assert len(weekly) == 1
+    assert weekly.iloc[0]["day_count"] == 6
+    assert weekly.iloc[0]["value"] == pytest.approx((100 + 101 + 103 + 104 + 105 + 106) / 6)
+
+
+def test_monthly_average_uses_only_logged_meal_days(tmp_path) -> None:
+    from app.charts.aggregation import mask_low_coverage_periods, resample_period, valid_logged_days_by_period
+
+    db_path = tmp_path / "health.duckdb"
+    database = Database(db_path)
+    with database.writable_connection() as conn:
+        init_schema(conn)
+        for day in range(1, 8):
+            calories = 1500.0 if day != 3 else 500.0
+            _insert_meal(
+                conn,
+                start_date=datetime(2024, 6, day, 12, 0),
+                source_name="FatSecret",
+                carbohydrates=100.0 + day,
+                protein=50.0,
+                total_fat=20.0,
+                calories=calories,
+            )
+
+    repository = NutritionRepository(database)
+    carbs_metric = next(
+        metric for metric in NUTRITION_METRICS if metric.record_type.endswith("Carbohydrates")
+    )
+    breakdown = repository.load_macro_calorie_breakdown()
+    daily = repository.load_daily_metrics_aligned([carbs_metric])
+    monthly = mask_low_coverage_periods(
+        resample_period(daily, "monthly"),
+        valid_logged_days_by_period(breakdown, "monthly"),
+        value_columns=["value"],
+    )
+
+    assert len(monthly) == 1
+    assert monthly.iloc[0]["date"] == datetime(2024, 6, 1).date()
+    assert monthly.iloc[0]["value"] == pytest.approx((101 + 102 + 104 + 105 + 106 + 107) / 6)

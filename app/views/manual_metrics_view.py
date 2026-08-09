@@ -7,7 +7,8 @@ import streamlit as st
 
 from app.charts.aggregation import Period
 from app.charts.metric_trend_chart import MetricTrendChart
-from app.config import MORNING_WINDOW, USER_HEIGHT_CM, HealthMetric, ManualMetric
+from app.config import BODY_MASS_METRIC, MORNING_WINDOW, USER_HEIGHT_CM, HealthMetric, ManualMetric
+from app.repositories.body_mass_repository import BodyMassRepository, MANUAL_WEIGHT_METRIC
 from app.repositories.manual_metrics_repository import ManualMetricsRepository
 from app.repositories.zepp_repository import ZeppRepository
 from app.views.chart_controls import (
@@ -34,9 +35,14 @@ class ManualMetricsView:
         self,
         manual_repository: ManualMetricsRepository | None = None,
         zepp_repository: ZeppRepository | None = None,
+        body_mass_repository: BodyMassRepository | None = None,
     ) -> None:
         self._manual_repository = manual_repository or ManualMetricsRepository()
         self._zepp_repository = zepp_repository or ZeppRepository()
+        self._body_mass_repository = body_mass_repository or BodyMassRepository(
+            manual_repository=self._manual_repository,
+            zepp_repository=self._zepp_repository,
+        )
         self._chart_builder = MetricTrendChart()
 
     def render(self) -> None:
@@ -45,11 +51,21 @@ class ManualMetricsView:
 
         self._render_entry_form()
 
-        manual_metrics = self._manual_repository.list_chart_metrics()
-        zepp_metrics = self._zepp_repository.list_available_metrics()
+        manual_metrics = [
+            metric
+            for metric in self._manual_repository.list_chart_metrics()
+            if metric.key != MANUAL_WEIGHT_METRIC.key
+        ]
+        zepp_metrics = [
+            metric
+            for metric in self._zepp_repository.list_available_metrics()
+            if metric.record_type != BODY_MASS_METRIC.record_type
+        ]
         all_labels = [metric.label for metric in manual_metrics] + [
             metric.label for metric in zepp_metrics
         ]
+        if self._body_mass_repository.has_data():
+            all_labels.append(BODY_MASS_METRIC.label)
         if not all_labels:
             st.warning("No body measurement data found.")
             return
@@ -59,6 +75,9 @@ class ManualMetricsView:
             manual_df = self._manual_repository.load_metrics(manual_metrics)
             if not manual_df.empty:
                 preload_frames.append(manual_df)
+        body_mass_df = self._body_mass_repository.load_daily()
+        if not body_mass_df.empty:
+            preload_frames.append(body_mass_df)
         if zepp_metrics:
             zepp_df = self._zepp_repository.load_selected_metrics(zepp_metrics)
             if not zepp_df.empty:
@@ -88,15 +107,18 @@ class ManualMetricsView:
             st.warning("No data for the selected years.")
             return
 
-        chart_metrics = [
+        chart_metrics: list[ManualMetric | HealthMetric] = [
             metric
             for metric in manual_metrics + zepp_metrics
             if metric.label in selected_labels
         ]
+        if BODY_MASS_METRIC.label in selected_labels and not body_mass_df.empty:
+            chart_metrics.append(BODY_MASS_METRIC)
         period_label = "Monthly" if period == "monthly" else "Weekly"
         subtitle = (
             f"{period_label} averages. Manual cm entries and Zepp morning readings "
-            f"({MORNING_WINDOW.label()}). US Army body fat uses {USER_HEIGHT_CM:.0f} cm height."
+            f"({MORNING_WINDOW.label()}). Body mass uses manual weight when available. "
+            f"US Army body fat uses {USER_HEIGHT_CM:.0f} cm height."
         )
 
         with chart_panel("Body measurement trends", subtitle=subtitle):

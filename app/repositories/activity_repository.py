@@ -6,6 +6,7 @@ import pandas as pd
 
 from app.config import (
     ACTIVITY_STEP_METRIC,
+    ACTIVE_ENERGY_METRIC,
     GARMIN_SOURCE,
     POLAR_SOURCE,
     PREFERRED_ACTIVITY_SOURCES,
@@ -44,10 +45,38 @@ class ActivityRepository:
                 columns=["date", "value", "unit", "reading_count", "label", "source_name"]
             )
 
-        resolved = self._resolve_daily_steps(by_source)
+        resolved = self._resolve_daily_by_source(by_source)
         resolved = resolved.copy()
         resolved["label"] = ACTIVITY_STEP_METRIC.label
         return resolved.sort_values("date").reset_index(drop=True)
+
+    def load_daily_energy_burned(self) -> pd.DataFrame:
+        """Load daily active energy from Polar/Garmin, preferring Polar on conflicts."""
+        by_source = self._load_daily_energy_by_source()
+        if by_source.empty:
+            return pd.DataFrame(
+                columns=["date", "value", "unit", "reading_count", "label", "source_name"]
+            )
+
+        resolved = self._resolve_daily_by_source(by_source)
+        resolved = resolved.copy()
+        resolved["label"] = ACTIVE_ENERGY_METRIC.label
+        return resolved.sort_values("date").reset_index(drop=True)
+
+    def has_energy_data(self) -> bool:
+        """Return whether any Polar or Garmin active energy records exist."""
+        count = self._database.query(
+            """
+            SELECT 1 AS present
+            FROM apple_health_records
+            WHERE type = ?
+              AND value IS NOT NULL
+              AND source_name IN (?, ?)
+            LIMIT 1
+            """,
+            [ACTIVE_ENERGY_METRIC.record_type, POLAR_SOURCE, GARMIN_SOURCE],
+        )
+        return not count.empty
 
     @staticmethod
     def describe_steps_sources(steps_df: pd.DataFrame) -> str:
@@ -155,19 +184,19 @@ class ActivityRepository:
         )
         return not count.empty
 
-    def _resolve_daily_steps(self, by_source: pd.DataFrame) -> pd.DataFrame:
+    def _resolve_daily_by_source(self, by_source: pd.DataFrame) -> pd.DataFrame:
         """Pick one source per day, using priority only when several sources overlap."""
         rows: list[pd.Series] = []
         for _, group in by_source.groupby("date", sort=True):
             if len(group) == 1:
                 rows.append(group.iloc[0])
                 continue
-            rows.append(self._pick_conflicting_steps(group))
+            rows.append(self._pick_preferred_source(group))
 
         return pd.DataFrame(rows)
 
-    def _pick_conflicting_steps(self, group: pd.DataFrame) -> pd.Series:
-        """Resolve same-day steps from Polar, then Garmin, then Apple Health."""
+    def _pick_preferred_source(self, group: pd.DataFrame) -> pd.Series:
+        """Resolve same-day values from Polar, then Garmin, then the highest fallback."""
         for source in PREFERRED_ACTIVITY_SOURCES:
             match = group[group["source_name"] == source]
             if not match.empty:
@@ -175,6 +204,29 @@ class ActivityRepository:
 
         fallback = group.sort_values("value", ascending=False).iloc[0]
         return fallback
+
+    def _pick_conflicting_steps(self, group: pd.DataFrame) -> pd.Series:
+        """Resolve same-day steps from Polar, then Garmin, then Apple Health."""
+        return self._pick_preferred_source(group)
+
+    def _load_daily_energy_by_source(self) -> pd.DataFrame:
+        return self._database.query(
+            """
+            SELECT
+                CAST(start_date AS DATE) AS date,
+                source_name,
+                SUM(value) AS value,
+                ANY_VALUE(unit) AS unit,
+                COUNT(*) AS reading_count
+            FROM apple_health_records
+            WHERE type = ?
+              AND value IS NOT NULL
+              AND source_name IN (?, ?)
+            GROUP BY 1, 2
+            ORDER BY 1, 2
+            """,
+            [ACTIVE_ENERGY_METRIC.record_type, POLAR_SOURCE, GARMIN_SOURCE],
+        )
 
     def _load_daily_steps_by_source(self) -> pd.DataFrame:
         return self._database.query(

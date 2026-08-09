@@ -4,7 +4,48 @@ from typing import Literal
 
 import pandas as pd
 
+from app.config import MIN_VALID_LOGGED_DAYS
+from app.repositories.energy_balance_repository import energy_balance_diff
+
 Period = Literal["weekly", "monthly"]
+
+
+def _period_start(frame: pd.DataFrame, period: Period) -> pd.Series:
+    if period == "weekly":
+        return frame["date"] - pd.to_timedelta(frame["date"].dt.dayofweek, unit="D")
+    return frame["date"].dt.to_period("M").dt.to_timestamp()
+
+
+def valid_logged_days_by_period(daily_df: pd.DataFrame, period: Period) -> pd.Series:
+    """Count daily meal-log rows per week or month."""
+    if daily_df.empty:
+        return pd.Series(dtype="int64")
+
+    frame = daily_df.copy()
+    frame["date"] = pd.to_datetime(frame["date"])
+    frame["period_start"] = _period_start(frame, period)
+    return frame.groupby("period_start")["date"].count()
+
+
+def mask_low_coverage_periods(
+    df: pd.DataFrame,
+    valid_day_counts: pd.Series,
+    *,
+    value_columns: list[str],
+    min_valid_days: int = MIN_VALID_LOGGED_DAYS,
+) -> pd.DataFrame:
+    """Keep period rows but drop values when too few logged days exist."""
+    if df.empty:
+        return df
+
+    result = df.copy()
+    period_keys = pd.to_datetime(result["date"])
+    mapped_counts = period_keys.map(valid_day_counts)
+    insufficient = mapped_counts.fillna(0) < min_valid_days
+    for column in value_columns:
+        if column in result.columns:
+            result.loc[insufficient, column] = pd.NA
+    return result
 
 
 def resample_period(df: pd.DataFrame, period: Period) -> pd.DataFrame:
@@ -131,10 +172,8 @@ def resample_breakdown(df: pd.DataFrame, period: Period) -> pd.DataFrame:
 
     frame = df.copy()
     frame["date"] = pd.to_datetime(frame["date"])
-    if period == "weekly":
-        frame["period_start"] = frame["date"] - pd.to_timedelta(frame["date"].dt.dayofweek, unit="D")
-    else:
-        frame["period_start"] = frame["date"].dt.to_period("M").dt.to_timestamp()
+    valid_day_counts = valid_logged_days_by_period(frame, period)
+    frame["period_start"] = _period_start(frame, period)
 
     aggregated = (
         frame.groupby("period_start", as_index=False)
@@ -143,6 +182,49 @@ def resample_breakdown(df: pd.DataFrame, period: Period) -> pd.DataFrame:
         .sort_values("date")
     )
     aggregated["date"] = aggregated["date"].dt.date
+    return mask_low_coverage_periods(
+        aggregated,
+        valid_day_counts,
+        value_columns=list(MACRO_BREAKDOWN_COLUMNS),
+    )
+
+
+ENERGY_BALANCE_COLUMNS = ("spent_kcal", "consumed_kcal", "diff_kcal")
+
+
+def resample_energy_balance(df: pd.DataFrame, period: Period) -> pd.DataFrame:
+    """Sum daily spent and consumed calories by week or month, then compute diff."""
+    if df.empty:
+        return df
+
+    frame = df.copy()
+    frame["date"] = pd.to_datetime(frame["date"])
+    consumed_days = frame.loc[
+        frame["consumed_kcal"].notna() & (frame["consumed_kcal"] > 0),
+        ["date"],
+    ]
+    valid_day_counts = valid_logged_days_by_period(consumed_days, period)
+    frame["period_start"] = _period_start(frame, period)
+
+    aggregated = (
+        frame.groupby("period_start", as_index=False)
+        .agg(
+            spent_kcal=("spent_kcal", "sum"),
+            consumed_kcal=("consumed_kcal", "sum"),
+        )
+        .rename(columns={"period_start": "date"})
+        .sort_values("date")
+    )
+    aggregated["date"] = aggregated["date"].dt.date
+    aggregated = mask_low_coverage_periods(
+        aggregated,
+        valid_day_counts,
+        value_columns=["consumed_kcal"],
+    )
+    aggregated["diff_kcal"] = energy_balance_diff(
+        aggregated["consumed_kcal"],
+        aggregated["spent_kcal"],
+    )
     return aggregated
 
 
