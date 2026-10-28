@@ -38,6 +38,20 @@ source .venv/bin/activate
 uv run streamlit run app/main.py
 ```
 
+## AI analytics
+
+The Analytics section summarizes the last 28 days of nutrition, energy balance, workouts, steps, and body mass, and compares that window with the previous 28 days. Fact cards are calculated locally.
+
+**Write review** sends that summary to OpenAI and shows a short review with suggestions. Food diary rows are not included. The review stays in the browser session.
+
+```bash
+export OPENAI_API_KEY=sk-...
+export OPENAI_MODEL=gpt-4.1-mini  # optional
+uv run streamlit run app/main.py
+```
+
+Set `OPENAI_API_KEY` to enable the written review. The fact cards render either way.
+
 ## Import Apple Health
 
 Export from the iPhone Health app (Settings → Health → Export All Health Data). Then import the zip or `export.xml`:

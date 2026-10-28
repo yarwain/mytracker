@@ -130,3 +130,12 @@ ACTIVE_ENERGY_METRIC = HealthMetric(
 WORKOUT_MEASURE_COUNT = "count"
 WORKOUT_MEASURE_DURATION = "duration"
 WORKOUT_MEASURES = (WORKOUT_MEASURE_COUNT, WORKOUT_MEASURE_DURATION)
+
+# Days in the analytics window, compared with the window immediately before it.
+ANALYTICS_WINDOW_DAYS = 28
+
+# Comparison label for protein grams per kilogram of body mass. Not a prescription.
+PROTEIN_REFERENCE_G_PER_KG = 1.6
+
+# Overridden by the OPENAI_MODEL environment variable when that variable is set.
+OPENAI_MODEL_DEFAULT = "gpt-4.1-mini"

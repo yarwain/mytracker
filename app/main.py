@@ -9,6 +9,7 @@ from app.repositories.manual_metrics_repository import ManualMetricsRepository
 from app.repositories.nutrition_repository import NutritionRepository
 from app.repositories.zepp_repository import ZeppRepository
 from app.views.activity_view import ActivityView
+from app.views.analytics_view import AnalyticsView
 from app.views.manual_metrics_view import ManualMetricsView
 from app.views.nutrition_view import NutritionView
 
@@ -35,6 +36,11 @@ class MyTrackerApp:
             body_mass_repository=body_mass_repository,
         )
         self._activity_view = ActivityView(ActivityRepository(self._database))
+        self._analytics_view = AnalyticsView(
+            nutrition_repository=NutritionRepository(self._database),
+            activity_repository=ActivityRepository(self._database),
+            body_mass_repository=body_mass_repository,
+        )
 
     def run(self) -> None:
         """Render the dashboard."""
@@ -52,6 +58,8 @@ class MyTrackerApp:
         self._nutrition_view.render()
         st.divider()
         self._activity_view.render()
+        st.divider()
+        self._analytics_view.render()
 
 
 def main() -> None:
